@@ -1,0 +1,8 @@
+Package: hsn2-data-store
+Version: {VER}
+Section: unknown
+Priority: optional
+Architecture: all
+Maintainer: Juliusz Brzostek (juliusz.brzostek@cert.pl)
+Description: HSN2 Data Store Component.
+Distribution: {DEBIAN_DIST}
