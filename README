@@ -1,0 +1,13 @@
+HSN2 Data-Store (hsn2-data-store)
+
+
+Data Store is a simple database that can store arbitrary binary data.
+Communication is done via simplified REST commands.
+It is optimized for storing large objects, e.g. files, long lists.
+
+
+
+This repository is a part of bigger project: Honeyspider Network 2.0.
+Project bundle is located at: https://github.com/CERT-Polska/hsn2-bundle.
+More information is available on the project website:
+http://www.honeyspider.net
