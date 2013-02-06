@@ -1,0 +1,15 @@
+#!/usr/bin/make -f
+
+export JAVA_HOME=/usr/lib/jvm/java-7-openjdk-$(shell dpkg-architecture -qDEB_HOST_ARCH)
+
+# Put depended upon jars in here
+# export CLASSPATH=
+
+%:
+	dh $@ --with javahelper
+
+override_dh_auto_build:
+	# Build the package
+	mvn-debian package -D maven.test.skip=true
+override_dh_auto_clean:
+	mvn-debian clean

@@ -1,0 +1,2 @@
+usr/share/hsn2/hsn2.jar:
+ Debian-Java-Home: /usr/lib/jvm/java-7-openjdk-$(shell dpkg-architecture -qDEB_HOST_ARCH)
