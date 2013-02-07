@@ -1,17 +1,17 @@
-Format: [URI OF THE FORMAT SPECIFICATION, SUCH AS http://www.debian.org/doc/packaging-manuals/copyright-format/<VERSION>/]
-Upstream-Name: [THE NAME UPSTREAM USES FOR THE SOFTWARE]
-Upstream-contact: [THE PREFERRED ADDRESS(ES) TO REACH THE UPSTREAM PROJECT]
-Source: [AN EXPLANATION FROM WHERE THE UPSTREAM SOURCE CAME FROM. TYPICALLY AN URL]
-[OTHER FIELDS]
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: HSN2 Data Store
+Upstream-contact: hsn2-info@cert.pl
+Source: https://github.com/CERT-Polska/hsn2-data-store
+
+License: GPL-3
+ On Debian systems, the complete text of the GNU General Public
+ License can be found in the file /usr/share/common-licenses/GPL-3'.
 
 Files: *
-Copyright: Copyright 2013 John Doe <jdoe@example.com>
-License: [STANDARD ABBREVIATION -- SEE "Short names" SECTION OF SPECIFICATION]
- [LICENSE TEXT]
+Copyright: Copyright 2013 NASK <hsn2-info@cert.pl>
+License: GPL-3
 
 Files: debian/*
-Copyright: Copyright 2013 Pawel Jacewicz <pawel.jacewicz@cert.pl>
-License: [STANDARD ABBREVIATION]
- [LICENSE TEXT]
+Copyright: Copyright 2013 NASK <hsn2-info@cert.pl>
+License: GPL-3
 
-[OTHER FILE PARAGRAPHS]

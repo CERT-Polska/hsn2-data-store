@@ -10,6 +10,7 @@ export JAVA_HOME=/usr/lib/jvm/java-7-openjdk-$(shell dpkg-architecture -qDEB_HOS
 
 override_dh_auto_build:
 	# Build the package
-	mvn-debian package -D maven.test.skip=true
+	mvn-debian package -D maven.test.skip=true -Pbundle
 override_dh_auto_clean:
 	mvn-debian clean
+override_jh_manifest:

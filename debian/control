@@ -1,14 +1,14 @@
-Source: hsn2
+Source: hsn2-data-store
 Section: misc
 Priority: optional
-Maintainer: Pawel Jacewicz <pawel.jacewicz@cert.pl>
-Build-Depends: debhelper (>= 8), openjdk-7-jdk, javahelper (>= 0.43) , maven2, maven-debian-helper, libcommons-io-java, libslf4j-java
+Maintainer: Paweł Jacewicz <pawel.jacewicz@cert.pl>
+Build-Depends: debhelper (>= 8), openjdk-7-jdk, javahelper (>= 0.43) , maven2, maven-debian-helper, libcommons-io-java, libslf4j-java, libmaven-assembly-plugin-java
 Standards-Version: 3.9.3
 Homepage: http://www.honeyspider.net
 
-Package: hsn2
+Package: hsn2-data-store
 Architecture: all
-Depends: ${java:Depends}, ${misc:Depends}
+Depends: ${java:Depends}, ${misc:Depends}, java-wrappers
 Recommends: ${java:Recommends}
 Description: HSN 2.0 Data Store
  HSN 2.0 Data Store keeps all files downloaded
