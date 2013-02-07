@@ -13,4 +13,6 @@ override_dh_auto_build:
 	mvn-debian package -D maven.test.skip=true -Pbundle
 override_dh_auto_clean:
 	mvn-debian clean
+override_dh_installinit:
+	dh_installinit --no-start
 override_jh_manifest:
