@@ -1,0 +1,8 @@
+hsn2-data-store (1.0.0-1) experimental; urgency=low
+
+  * Better scripts for Data Store package building
+  * Added patches for Debian package creation
+  * Unapply patches from source
+  * Fixing bad mail in copyrighs
+
+ -- Pawel Jacewicz <pawel.jacewicz@cert.pl>  Thu, 07 Feb 2013 17:46:43 +0100
