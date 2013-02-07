@@ -4,5 +4,6 @@ hsn2-data-store (1.0.0-1) experimental; urgency=low
   * Added patches for Debian package creation
   * Unapply patches from source
   * Fixing bad mail in copyrighs
+  * Do not start Data Store after Install/Upgrade
 
  -- Pawel Jacewicz <pawel.jacewicz@cert.pl>  Thu, 07 Feb 2013 17:46:43 +0100
