@@ -1,1 +1,2 @@
-/var/log/hsn2
+var/log/hsn2
+var/lib/hsn2/data-store/data
