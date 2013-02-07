@@ -1,0 +1,31 @@
+From: =?UTF-8?q?Pawe=C5=82=20Jacewicz?= <pawel.jacewicz@cert.pl>
+Date: Thu, 7 Feb 2013 16:02:06 +0100
+Subject: Script for starting Data Store
+
+---
+ data-store.sh |   16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+ create mode 100755 data-store.sh
+
+diff --git a/data-store.sh b/data-store.sh
+new file mode 100755
+index 0000000..6cbb11f
+--- /dev/null
++++ b/data-store.sh
+@@ -0,0 +1,16 @@
++#!/bin/sh
++
++# Include the wrappers utility script
++. /usr/lib/java-wrappers/java-wrappers.sh
++
++JAR_PATH=/usr/share/hsn2/data-store/hsn2-data-store-1.0.0.jar
++
++# We need openjdk runtime.
++require_java_runtime openjdk
++
++find_jars commons-io slf4j-log4j12 slf4j-api log4j-1.2
++
++JAVA_CLASSPATH=$JAVA_CLASSPATH:$JAR_PATH
++JAVA_ARGS="-Xmx90m -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.port=1103"
++
++run_java pl.nask.hsn2.DataStore "$@"
