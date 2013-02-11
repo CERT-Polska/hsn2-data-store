@@ -2,15 +2,9 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>pl.nask.hsn2</groupId>
   <artifactId>hsn2-data-store</artifactId>
-  <version>1.0.1-SNAPSHOT</version>
+  <version>1.0.1</version>
   <name>hsn2-data-store</name>
   <dependencies>
-    <dependency>
-      <groupId>org.testng</groupId>
-      <artifactId>testng</artifactId>
-      <version>6.1.1</version>
-      <scope>test</scope>
-    </dependency>
     <dependency>
     	<groupId>commons-io</groupId>
     	<artifactId>commons-io</artifactId>
@@ -29,6 +23,7 @@
   </dependencies>
   
   <build>
+  <finalName>hsn2-data-store</finalName>
 		<plugins>
 			<plugin>
 				<artifactId>maven-compiler-plugin</artifactId>
@@ -68,7 +63,7 @@
 					<manifest>
 	                  <addClasspath>true</addClasspath>
 	                  <mainClass>pl.nask.hsn2.DataStore</mainClass>                      
-	                  <classpathPrefix>lib/</classpathPrefix>
+	                  <!--classpathPrefix>lib/</classpathPrefix-->
 	                </manifest>
 	              </archive>
 	            </configuration>		    
