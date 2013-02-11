@@ -7,15 +7,15 @@ Subject: Changes to allow easy building on Debian
  1 file changed, 2 insertions(+), 8 deletions(-)
 
 diff --git a/pom.xml b/pom.xml
-index b221677..b0988ae 100644
+index 33e4aea..360c430 100644
 --- a/pom.xml
 +++ b/pom.xml
 @@ -2,16 +2,10 @@
    <modelVersion>4.0.0</modelVersion>
    <groupId>pl.nask.hsn2</groupId>
    <artifactId>hsn2-data-store</artifactId>
--  <version>1.0.0-SNAPSHOT</version>
-+  <version>1.0.0</version>
+-  <version>1.0.1-SNAPSHOT</version>
++  <version>1.0.1</version>
    <name>hsn2-data-store</name>
    <dependencies>
      <dependency>
