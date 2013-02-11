@@ -7,7 +7,7 @@ Subject: Changes to allow easy building on Debian
  1 file changed, 2 insertions(+), 8 deletions(-)
 
 diff --git a/pom.xml b/pom.xml
-index dd556ac..48eeb47 100644
+index b221677..b0988ae 100644
 --- a/pom.xml
 +++ b/pom.xml
 @@ -2,16 +2,10 @@
@@ -28,7 +28,7 @@ index dd556ac..48eeb47 100644
      	<groupId>commons-io</groupId>
      	<artifactId>commons-io</artifactId>
      	<version>1.4</version>
-@@ -63,7 +57,7 @@
+@@ -68,7 +62,7 @@
  					<manifest>
  	                  <addClasspath>true</addClasspath>
  	                  <mainClass>pl.nask.hsn2.DataStore</mainClass>                      
