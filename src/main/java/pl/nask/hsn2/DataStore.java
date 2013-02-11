@@ -31,14 +31,17 @@ import java.io.Reader;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-
+import org.apache.commons.daemon.Daemon;
+import org.apache.commons.daemon.DaemonContext;
+import org.apache.commons.daemon.DaemonController;
+import org.apache.commons.daemon.DaemonInitException;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pl.nask.hsn2.exceptions.JobNotFoundException;
 
-public class DataStore{
+public final class DataStore implements Daemon{
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStore.class);
 	private static final String help = "usage: java -jar ...\n-h, --help\tthis help\n-p, --port\tport which dataStore listens (default: 8080)";
 	private static final String DATA_STORE_PATH;
@@ -56,33 +59,30 @@ public class DataStore{
 	
 	private static long idCount;
 	private static int port = 8080;
+	private DataStoreServer server;
 
-	private DataStore() {
-	}
 
-	public static void main(String[] args) {
-	    if (args.length != 0){
-	    	String optionName = args[0];
-	    	if (optionName.equals("-p") && optionName.equals("--port")){
-	    		port = Integer.parseInt(args[1]);
-	    		initialize();
-				startServer();
-		    }
-		    else{
-		    	if (!optionName.equals("-h") && !optionName.equals("--help")){
-		    		System.out.println("Unknown parameter " + optionName);
-		    	}
-		    	System.out.println(help);
-		    }
-	    }
-	    else{
-	    	initialize();
-			startServer();
-	    }
-	}
-
-	private static void startServer() {
-		new DataStoreServer(port).start();
+	public static void main(final String[] args) throws DaemonInitException, Exception {
+		DataStore ds = new DataStore();
+		ds.init(new DaemonContext() {
+			
+			@Override
+			public DaemonController getController() {
+				return null;
+			}
+			
+			@Override
+			public String[] getArguments() {
+				return args;
+			}
+		});
+		ds.start();
+//		synchronized (ds.server) {
+//			ds.server.wait();
+//			
+//		}
+//		ds.stop();
+//		ds.destroy();
 	}
 
 	public static long addData(InputStream inputStream, long jobId) throws IOException, JobNotFoundException {
@@ -126,10 +126,6 @@ public class DataStore{
         File dir = getJobDirectory(job);
         return new File(dir, "" + ref);
     }
-
-    private static void initialize() {
-    	idCount = takeIdFromConf();
-	}
 
 	private static long takeIdFromConf() {
 		BufferedReader bufferedReader = null;
@@ -176,4 +172,43 @@ public class DataStore{
     public static String getDataPath() {
     	return DATA_PATH;
     }
+
+	@Override
+	public void init(DaemonContext context) throws DaemonInitException, Exception {
+		if (context.getArguments().length != 0){
+			String optionName = context.getArguments()[0];
+			if (optionName.equals("-p") && optionName.equals("--port")){
+				port = Integer.parseInt(context.getArguments()[1]);
+			}
+			else{
+				if (!optionName.equals("-h") && !optionName.equals("--help")){
+					System.out.println("Unknown parameter " + optionName);
+				}
+				System.out.println(help);
+				System.exit(1);
+			}
+		}
+
+		idCount = takeIdFromConf();
+		server = new DataStoreServer(port);
+
+	}
+
+	@Override
+	public void start() throws Exception {
+		server.start();
+		
+	}
+
+	@Override
+	public void stop() throws Exception {
+			server.close();
+		
+	}
+
+	@Override
+	public void destroy() {
+		
+
+	}
 }
