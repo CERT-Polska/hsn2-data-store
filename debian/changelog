@@ -1,3 +1,19 @@
+hsn2-data-store (1.0.1-1) experimental; urgency=low
+
+  [ Rafal Kordalski ]
+  * jsvc support added (Closes: #1)
+  * startup script modified to use jsvc service wrapper
+
+  [ Paweł Jacewicz ]
+  * Added dependency for libcommons-daemon-java
+  * New version due to JSVC update
+  * Updated patch for POM.XML to allow building the software on Debian
+  * Changes to debian/install file due to new init script
+  * New patch for easy Debian install
+  * Modified init script to support java-wrappers
+
+ -- Pawel Jacewicz <pawel.jacewicz@cert.pl>  Mon, 11 Feb 2013 18:51:07 +0100
+
 hsn2-data-store (1.0.0-1) experimental; urgency=low
 
   * Better scripts for Data Store package building
