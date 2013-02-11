@@ -1,2 +1,1 @@
-target/hsn2-data-store-1.0.0.jar usr/share/hsn2/data-store
-data-store.sh usr/share/hsn2/data-store
+target/hsn2-data-store.jar usr/share/hsn2/data-store
