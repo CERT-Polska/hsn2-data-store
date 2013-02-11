@@ -10,12 +10,6 @@
 # Description:            Start/Stop the HSN2 Data Store daemon.
 ### END INIT INFO
 
-if [ -z "`which java`" ]; then
-	echo "JAVA need to be installed first!"
-	exit 1
-fi
-
-. /lib/lsb/init-functions
 
 NAME="HSN2 Data Store"
 HSN2_COMPONENT="data-store"
@@ -25,19 +19,70 @@ PIDFILE="/var/run/hsn2-$HSN2_COMPONENT.pid"
 
 HSN2_COMPONENT_PARAMS=""
 
-case "$1" in
+MAINCLASS="pl.nask.hsn2.DataStore"
+
+JSVCBIN=`which jsvc`
+
+. /lib/lsb/init-functions
+
+if [ -z "`which java`" ]; then
+	log_failure_msg "Error" "JAVA need to be installed first."
+	exit 1
+fi
+
+
+if [ -z "$JAVA_HOME" -a -d "/usr/lib/jvm/java-7-openjdk-amd64" ]; then
+	#JAVA_HOME="/usr/lib/jvm/java-7-openjdk-amd64"
+	log_warning_msg "JAVA_HOME is not set.Using default: $JAVA_HOME"
+fi
+
+
+
+use_jsvc_wrapper () {
+	#log_daemon_msg "using jsvc..."
+	case "$1" in
+		start)
+			log_daemon_msg "Starting" "$NAME"
+			$JSVCBIN -home $JAVA_HOME -wait 30 -pidfile ${PIDFILE} $HSN2_JVM_PARAMS -cp $HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $MAINCLASS $HSN2_COMPONENT_PARAMS
+			
+			log_end_msg $?
+			return $?
+			;;
+		stop)
+			log_daemon_msg "Stopping" "$NAME"
+			$JSVCBIN -home $JAVA_HOME -stop -pidfile ${PIDFILE} $HSN2_JVM_PARAMS -cp $HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $MAINCLASS 
+
+			log_end_msg $?
+			return $?
+			;;
+		status)
+			status_of_proc -p $PIDFILE $JSVCBIN $NAME && return 0 || return $?
+			;;
+	esac
+		
+return 0
+}
+
+
+use_start_stop_daemon() {
+	log_daemon_msg "using start-stop-daemon..."
+	case "$1" in
 	start)
 		log_daemon_msg "Starting" "$NAME"
 		cd "$HSN2_COMPONENT_HOME"
-		start-stop-daemon --start --quiet --oknodo --background --make-pidfile --pidfile $PIDFILE --exec $HSN2_COMPONENT_HOME/$HSN2_COMPONENT.sh -- $HSN2_COMPONENT_PARAMS
-		sleep 1
+		# workaround (see redmine #6587, #6324)
+		start-stop-daemon --start --quiet --oknodo --background --make-pidfile --pidfile $PIDFILE --exec /usr/bin/java -- $HSN2_JVM_PARAMS -jar $HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $HSN2_COMPONENT_PARAMS
+		sleep 5
 		PID=`cat $PIDFILE`
 		TEST=`ps ax | grep $PID | grep java | sed -e 's/^ *//' | cut -d' ' -f1`
 		if [ -n "$TEST" ]; then
+		# original code
+		#if start-stop-daemon --start --quiet --oknodo --background --make-pidfile --pidfile $PIDFILE --exec /usr/bin/java -- -jar $HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $HSN2_COMPONENT_PARAMS; then
 			log_end_msg 0
 		else
 			log_end_msg 1
 			echo "" > $PIDFILE
+			return 1
 		fi
 		;;
 
@@ -53,7 +98,17 @@ case "$1" in
 		;;
 
 	status)
-		status_of_proc -p $PIDFILE "$JAVA" "$NAME" && exit 0 || exit $?
+		status_of_proc -p $PIDFILE "$JAVA" "$NAME" && return 0 || return $?
 		;;
-esac
-exit 0
+	esac
+return 0
+
+}
+	
+if [ -z "$JSVCBIN"  -o -z "$JAVA_HOME" ]; then
+	use_start_stop_daemon $@
+else
+	use_jsvc_wrapper $@
+fi
+
+exit $?
