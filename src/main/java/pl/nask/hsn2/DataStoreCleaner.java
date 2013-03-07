@@ -116,7 +116,7 @@ public class DataStoreCleaner {
 		}
 	}
 
-	private void deleteNonEmptyDirectory(File dir) {
+	public static void deleteNonEmptyDirectory(File dir) {
 		LOGGER.debug("Non empty file/dir deleting: {}", dir.getAbsolutePath());
 		if (dir.isDirectory()) {
 			File[] filesInside = dir.listFiles();

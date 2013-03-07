@@ -31,8 +31,7 @@ import pl.nask.hsn2.handlers.DefaultHandler;
 
 import com.sun.net.httpserver.HttpServer;
 
-public class DataStoreServer{
-
+public class DataStoreServer {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreServer.class);
 	private HttpServer server;
 
@@ -41,20 +40,20 @@ public class DataStoreServer{
 		try {
 			server = HttpServer.create(addr, 0);
 		} catch (IOException e) {
-			throw new RuntimeException("Server error.",e);
+			throw new RuntimeException("Server error.", e);
 		}
 		server.createContext("/", new DefaultHandler());
-	    server.createContext("/data", new DataHandler());
-	    server.setExecutor(Executors.newCachedThreadPool());
-	    LOGGER.info("Server is listening on port {}", port);
+		server.createContext("/data", new DataHandler());
+		server.setExecutor(Executors.newCachedThreadPool());
+		LOGGER.info("Server is listening on port {}", port);
 	}
 
 	public void start() {
-	    server.start();
+		server.start();
 	}
 
-	public void close(){
+	public void close() {
 		server.stop(0);
-		 LOGGER.info("Server is stopped!");
+		LOGGER.info("Server is stopped!");
 	}
 }
