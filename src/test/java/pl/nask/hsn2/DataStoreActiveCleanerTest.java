@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) NASK, NCSC
+ * 
+ * This file is part of HoneySpider Network 2.0.
+ * 
+ * This is a free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package pl.nask.hsn2;
 
 import java.io.BufferedWriter;
@@ -6,7 +25,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.ConcurrentSkipListSet;
 
 import mockit.Delegate;
 import mockit.Mocked;
@@ -47,6 +65,51 @@ public class DataStoreActiveCleanerTest {
 	private Path dirBase;
 	CleaningActions nextAction;
 	private boolean connCloseRequested = false;
+
+	@SuppressWarnings({ "rawtypes", "unused" })
+	private void mockObjectsWithConnectionException() throws Exception {
+		connCloseRequested = false;
+		new NonStrictExpectations() {
+			@Mocked
+			ConnectionFactory cf;
+			{
+				// Create new connection.
+				cf.newConnection();
+				result = c;
+
+				// Create channel.
+				c.createChannel();
+				result = ch;
+
+				// Close connection.
+				c.close();
+				forEachInvocation = new Object() {
+					void validate() throws IOException {
+						connCloseRequested = true;
+						throw new IOException("Test IO exception");
+					}
+				};
+
+				// Declare exchange.
+				ch.exchangeDeclare(anyString, anyString);
+
+				// Declare queue.
+				ch.queueDeclare();
+				result = dok;
+
+				// Get queue name.
+				dok.getQueue();
+
+				consumer.nextDelivery();
+				result = new Delegate() {
+					public Delivery nextDelivery() throws Exception {
+						Thread.sleep(999999);
+						return null;
+					}
+				};
+			}
+		};
+	}
 
 	@SuppressWarnings({ "rawtypes", "unused" })
 	private void mockObjects() throws Exception {
@@ -91,24 +154,38 @@ public class DataStoreActiveCleanerTest {
 						JobFinished jf;
 						byte[] body;
 						switch (nextAction) {
+						case TASK_ACCEPTED:
+							d = taskAcceptedMsg();
+							nextAction = CleaningActions.REMOVE_JOB_1;
+							break;
 						case REMOVE_JOB_1:
-							d = removeJob1();
+							d = removeJobFinished(1, JobStatus.COMPLETED);
+							nextAction = CleaningActions.REMOVE_JOB_2;
 							break;
 						case REMOVE_JOB_2:
-							d = removeJob2();
+							d = removeJobFinishedReminder(2);
+							nextAction = CleaningActions.CANCEL;
 							break;
 						case REMOVE_JOB_3:
-							d = removeJob3();
-							nextAction = CleaningActions.REMOVE_JOB_3;
+							d = removeJobFinished(3, JobStatus.COMPLETED);
+							nextAction = CleaningActions.REMOVE_JOB_3_AGAIN;
 							break;
 						case REMOVE_JOB_3_AGAIN:
-							d = removeJob3();
-							nextAction = CleaningActions.REMOVE_JOB_2;
+							d = removeJobFinished(3, JobStatus.COMPLETED);
+							nextAction = CleaningActions.CANCEL;
+							break;
+						case REMOVE_JOB_4:
+							d = removeJobFinished(4, JobStatus.COMPLETED);
+							nextAction = CleaningActions.CANCEL;
+							break;
+						case REMOVE_JOB_5:
+							d = removeJobFinished(5, JobStatus.FAILED);
+							nextAction = CleaningActions.CANCEL;
 							break;
 						case NEVER_RETURN:
 							while (true) {
-								LOGGER.info("Never return...");
-								Thread.sleep(1000);
+								LOGGER.debug("Never return...");
+								Thread.sleep(10000);
 							}
 						case CANCEL:
 							throw new ConsumerCancelledException();
@@ -122,45 +199,42 @@ public class DataStoreActiveCleanerTest {
 						return d;
 					}
 
-					private Delivery removeJob1() {
+					private Delivery taskAcceptedMsg() {
 						Delivery d;
 						Envelope envelope;
 						BasicProperties properties;
 						JobFinished jf;
 						byte[] body;
-						envelope = new Envelope(1L, false, "", "");
+						envelope = new Envelope(1, false, "", "");
+						properties = new BasicProperties.Builder().type("TaskAccepted").build();
+						body = new byte[] { 1 };
+						d = new Delivery(envelope, properties, body);
+						return d;
+					}
+
+					private Delivery removeJobFinished(long jobId, JobStatus status) {
+						Delivery d;
+						Envelope envelope;
+						BasicProperties properties;
+						JobFinished jf;
+						byte[] body;
+						envelope = new Envelope(1, false, "", "");
 						properties = new BasicProperties.Builder().type("JobFinished").build();
-						jf = JobFinished.newBuilder().setJob(1L).setStatus(JobStatus.COMPLETED).build();
+						jf = JobFinished.newBuilder().setJob(jobId).setStatus(status).build();
 						body = jf.toByteArray();
 						d = new Delivery(envelope, properties, body);
-						nextAction = CleaningActions.REMOVE_JOB_2;
 						return d;
 					}
 
-					private Delivery removeJob2() {
+					private Delivery removeJobFinishedReminder(long jobId) {
 						Delivery d;
 						Envelope envelope;
 						BasicProperties properties;
 						byte[] body;
-						envelope = new Envelope(1L, false, "", "");
+						envelope = new Envelope(1, false, "", "");
 						properties = new BasicProperties.Builder().type("JobFinishedReminder").build();
-						JobFinishedReminder jfr = JobFinishedReminder.newBuilder().setJob(2L).setStatus(JobStatus.COMPLETED).build();
+						JobFinishedReminder jfr = JobFinishedReminder.newBuilder().setJob(jobId).setStatus(JobStatus.COMPLETED).build();
 						body = jfr.toByteArray();
-						d = new Delivery(envelope, properties, body);
-						nextAction = CleaningActions.CANCEL;
-						return d;
-					}
-
-					private Delivery removeJob3() {
-						Delivery d;
-						Envelope envelope;
-						BasicProperties properties;
-						JobFinished jf;
-						byte[] body;
-						envelope = new Envelope(1L, false, "", "");
-						properties = new BasicProperties.Builder().type("JobFinishedReminder").build();
-						jf = JobFinished.newBuilder().setJob(3L).setStatus(JobStatus.FAILED).build();
-						body = jf.toByteArray();
 						d = new Delivery(envelope, properties, body);
 						return d;
 					}
@@ -168,28 +242,39 @@ public class DataStoreActiveCleanerTest {
 			}
 		};
 	}
-	
-	private DataStoreCleanSingleJob mockSingleCleaner() {
-		DataStoreCleanSingleJob singleCleaner = null;
-		
+
+	@SuppressWarnings("unused")
+	private void mockSingleCleaner() {
 		new NonStrictExpectations() {
+			@Mocked(methods = { "run" })
+			DataStoreCleanSingleJob singleCleaner;
 			{
-				newInstance("pl.nask.hsn2.DataStoreCleanSingleJob", withInstanceOf(ConcurrentSkipListSet.class), anyLong, withInstanceOf(File.class));
+				singleCleaner.run();
+				times = 1;
+				forEachInvocation = new Object() {
+					void validate() {
+						LOGGER.info("RUN");
+					}
+				};
 			}
 		};
-		
-		return null;
 	}
 
 	private static enum CleaningActions {
-		REMOVE_JOB_1, REMOVE_JOB_2, REMOVE_JOB_3, CANCEL, NEVER_RETURN, INTERRUPT, SHUTDOWN, IO_EXCEPTION, REMOVE_JOB_3_AGAIN
+		REMOVE_JOB_1, REMOVE_JOB_2, REMOVE_JOB_3, CANCEL, NEVER_RETURN, INTERRUPT, SHUTDOWN, IO_EXCEPTION, REMOVE_JOB_3_AGAIN, REMOVE_JOB_4, REMOVE_JOB_5, TASK_ACCEPTED
 	}
 
+	/**
+	 * Standard cleaning tasks. Test creates dirs for job id=1 and id=2 and then it starts cleaner to remove this dirs.
+	 * 
+	 * @throws Exception
+	 *             When something goes wrong.
+	 */
 	@Test
 	public void cleanerTest() throws Exception {
 		mockObjects();
 		prepareDirs(new long[] { 1, 2 });
-		nextAction = CleaningActions.REMOVE_JOB_1;
+		nextAction = CleaningActions.TASK_ACCEPTED;
 
 		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, dirBase.toFile());
 		Thread cleaner = new Thread(cleanerTask);
@@ -204,9 +289,67 @@ public class DataStoreActiveCleanerTest {
 		Files.deleteIfExists(dirBase);
 	}
 
+	/**
+	 * Standard cleaning tasks. Test creates dirs for job id=1 and id=2 and then it starts cleaner to remove this dirs.
+	 * Cleaner is launched with option not to remove failed jobs data, but here all jobs completed successfully.
+	 * 
+	 * @throws Exception
+	 *             When something goes wrong.
+	 */
+	@Test
+	public void cleanerTestLeaveFailed() throws Exception {
+		mockObjects();
+		prepareDirs(new long[] { 1, 2 });
+		nextAction = CleaningActions.TASK_ACCEPTED;
+
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.FAILED, 1, dirBase.toFile());
+		Thread cleaner = new Thread(cleanerTask);
+		cleaner.start();
+		cleaner.join();
+
+		Thread.sleep(100);
+		Assert.assertTrue(Files.notExists(new File(dirBase.toString(), "1").toPath()));
+		Assert.assertTrue(Files.notExists(new File(dirBase.toString(), "2").toPath()));
+		Assert.assertTrue(connCloseRequested);
+
+		Files.deleteIfExists(dirBase);
+	}
+
+	/**
+	 * Cleaned started with option to leave failed jobs only. It does not clean job id=5 because they are marked as
+	 * failed.
+	 * 
+	 * @throws Exception
+	 *             When something goes wrong.
+	 */
+	@Test
+	public void jobNotEligibleForClean() throws Exception {
+		mockObjects();
+		prepareDirs(new long[] { 5 });
+		nextAction = CleaningActions.REMOVE_JOB_5;
+
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.FAILED, 1, dirBase.toFile());
+		Thread cleaner = new Thread(cleanerTask);
+		cleaner.start();
+		cleaner.join();
+
+		Thread.sleep(100);
+		Assert.assertTrue(Files.exists(new File(dirBase.toString(), "5").toPath()));
+		Assert.assertTrue(connCloseRequested);
+
+		DataStoreCleaner.deleteNonEmptyDirectory(dirBase.toFile());
+	}
+
+	/**
+	 * Test requests task of cleaning job id=3, and then requests again another task to clean the same job.
+	 * 
+	 * @throws Exception
+	 *             When something goes wrong.
+	 */
 	@Test
 	public void doubleCleaningTheSameJob() throws Exception {
 		mockObjects();
+		mockSingleCleaner();
 		prepareDirs(new long[] { 3 });
 		nextAction = CleaningActions.REMOVE_JOB_3;
 
@@ -215,13 +358,35 @@ public class DataStoreActiveCleanerTest {
 		cleaner.start();
 		cleaner.join();
 
-		Thread.sleep(100);
-		Assert.assertTrue(Files.notExists(new File(dirBase.toString(), "3").toPath()));
 		Assert.assertTrue(connCloseRequested);
-
-		Files.deleteIfExists(dirBase);
+		DataStoreCleaner.deleteNonEmptyDirectory(dirBase.toFile());
 	}
 
+	/**
+	 * Test requests cleaning data for job id=4, but there is no directory for this job.
+	 * 
+	 * @throws Exception
+	 *             When something goes wrong.
+	 */
+	@Test
+	public void jobDieNotExists() throws Exception {
+		mockObjects();
+		nextAction = CleaningActions.REMOVE_JOB_4;
+
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, new File(DataStore.DATA_PATH));
+		Thread cleaner = new Thread(cleanerTask);
+		cleaner.start();
+		cleaner.join();
+	}
+
+	/**
+	 * Prepares directories for tests.
+	 * 
+	 * @param jobDirectories
+	 *            Array of job ids for which directory should be created.
+	 * @throws IOException
+	 *             When something goes wrong.
+	 */
 	private void prepareDirs(long[] jobDirectories) throws IOException {
 		dirBase = Files.createTempDirectory("hsn2-data-store_");
 		for (int i = 0; i < jobDirectories.length; i++) {
@@ -229,6 +394,14 @@ public class DataStoreActiveCleanerTest {
 		}
 	}
 
+	/**
+	 * Prepares directory for one job.
+	 * 
+	 * @param jobId
+	 *            Id of job.
+	 * @throws IOException
+	 *             When something goes wrong.
+	 */
 	private void prepareJobDir(long jobId) throws IOException {
 		Path dir = Files.createDirectory(new File(dirBase.toString(), "" + jobId).toPath());
 		for (int i = 0; i < 5; i++) {
@@ -239,6 +412,16 @@ public class DataStoreActiveCleanerTest {
 		}
 	}
 
+	/**
+	 * Active cleaner is started with option not to remove job data at all. It has to exit immediately because it is not
+	 * needed.
+	 * 
+	 * Because of LeaveJobOption.ALL service should start and end immediately. If it won't leave as expected, it will
+	 * loop forever and therefore test will fail with timeout exceeded.
+	 * 
+	 * @throws Exception
+	 *             When something goes wrong.
+	 */
 	@Test(timeOut = 1000)
 	public void cleanerNotNeeded() throws Exception {
 		nextAction = CleaningActions.NEVER_RETURN;
@@ -248,12 +431,15 @@ public class DataStoreActiveCleanerTest {
 		cleaner.start();
 		cleaner.join();
 
-		// Because of LeaveJobOption.ALL service Should start and end immediately.
-		// If it won't leave as expected, it will loop forever and therefore test will fail with timeout exceeded.
-
 		Assert.assertFalse(connCloseRequested);
 	}
 
+	/**
+	 * Test does not starts any cleaning jobs but requests cleaner shutdown.
+	 * 
+	 * @throws Exception
+	 *             When something goes wrong.
+	 */
 	@Test
 	public void shutdownCleaner() throws Exception {
 		nextAction = CleaningActions.NEVER_RETURN;
@@ -266,6 +452,32 @@ public class DataStoreActiveCleanerTest {
 		Assert.assertTrue(connCloseRequested);
 	}
 
+	/**
+	 * Test does not starts any cleaning jobs but requests cleaner shutdown. Shutdown throws exception, but it shouldn't
+	 * affect whole process.
+	 * 
+	 * @throws Exception
+	 *             When something goes wrong.
+	 */
+	@Test
+	public void shutdownCleanerWithException() throws Exception {
+		nextAction = CleaningActions.NEVER_RETURN;
+		mockObjectsWithConnectionException();
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, new File(DataStore.DATA_PATH));
+		Thread cleaner = new Thread(cleanerTask);
+		cleaner.start();
+		Thread.sleep(100);
+		cleanerTask.shutdown();
+		Assert.assertTrue(connCloseRequested);
+	}
+
+	/**
+	 * Because of invoking InterruptedException in nextDelivery method, cleaning should stop immediately. If it won't
+	 * that means test failed (failure on timeout).
+	 * 
+	 * @throws Exception
+	 *             When something goes wrong.
+	 */
 	@Test(timeOut = 1000)
 	public void interruptCleaning() throws Exception {
 		nextAction = CleaningActions.INTERRUPT;
@@ -274,11 +486,15 @@ public class DataStoreActiveCleanerTest {
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
-
-		// Because of invoking InterruptedException in nextDelivery method, cleaning should stop immediately. If it
-		// won't that means test failed (failure on timeout).
 	}
 
+	/**
+	 * Because of invoking ShutdownSignalException in nextDelivery method, cleaning should stop immediately. If it won't
+	 * that means test failed (failure on timeout).
+	 * 
+	 * @throws Exception
+	 *             When something goes wrong.
+	 */
 	@Test(timeOut = 1000)
 	public void shutdownSignal() throws Exception {
 		nextAction = CleaningActions.SHUTDOWN;
@@ -287,11 +503,15 @@ public class DataStoreActiveCleanerTest {
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
-
-		// Because of invoking ShutdownSignalException in nextDelivery method, cleaning should stop immediately. If it
-		// won't that means test failed (failure on timeout).
 	}
 
+	/**
+	 * Because of invoking IOException in nextDelivery method, cleaning should stop immediately. If it won't that means
+	 * test failed (failure on timeout).
+	 * 
+	 * @throws Exception
+	 *             When something goes wrong.
+	 */
 	@Test(timeOut = 1000)
 	public void ioExceptionTest() throws Exception {
 		nextAction = CleaningActions.IO_EXCEPTION;
@@ -300,8 +520,5 @@ public class DataStoreActiveCleanerTest {
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
-
-		// Because of invoking IOException in nextDelivery method, cleaning should stop immediately. If it
-		// won't that means test failed (failure on timeout).
 	}
 }
