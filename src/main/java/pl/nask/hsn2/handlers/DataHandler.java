@@ -74,7 +74,7 @@ public class DataHandler extends AbstractHandler {
 
 	@SuppressWarnings("restriction")
 	private void handlePost(HttpExchange exchange, long jobId) throws IOException, IllegalStateException, JobNotFoundException {
-		LOGGER.debug("Post method. {}", exchange.getRequestURI().getPath());
+		LOGGER.info("Post method. {}", exchange.getRequestURI().getPath());
 
 		String dataId = String.valueOf(DataStore.addData(exchange.getRequestBody(), jobId));
 		Headers headers = exchange.getResponseHeaders();
@@ -84,11 +84,11 @@ public class DataHandler extends AbstractHandler {
 		
 		exchange.sendResponseHeaders(201, message.length());
 		exchange.getResponseBody().write(message.getBytes());
-		LOGGER.debug(message);
+		LOGGER.info(message);
 	}
 
 	private void handleGet(HttpExchange exchange, long jobId, long entryId) throws IOException, JobNotFoundException, EntryNotFoundException {
-		LOGGER.debug("Get method. {}", exchange.getRequestURI().getPath());
+		LOGGER.info("Get method. {}", exchange.getRequestURI().getPath());
 
 		File file = DataStore.getFileForJob(jobId, entryId);
 		InputStream inputStream = null;

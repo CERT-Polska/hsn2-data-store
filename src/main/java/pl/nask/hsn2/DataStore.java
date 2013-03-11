@@ -25,12 +25,12 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.RandomAccessFile;
-import java.io.Reader;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+
+import org.apache.commons.cli.ParseException;
 import org.apache.commons.daemon.Daemon;
 import org.apache.commons.daemon.DaemonContext;
 import org.apache.commons.daemon.DaemonController;
@@ -41,63 +41,49 @@ import org.slf4j.LoggerFactory;
 
 import pl.nask.hsn2.exceptions.JobNotFoundException;
 
-public final class DataStore implements Daemon{
+public final class DataStore implements Daemon {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStore.class);
-	private static final String help = "usage: java -jar ...\n-h, --help\tthis help\n-p, --port\tport which dataStore listens (default: 8080)";
 	private static final String DATA_STORE_PATH;
-	static{
+	static {
 		try {
 			String clazzPath = DataStore.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath();
 			File clazzFile = new File(clazzPath);
 			DATA_STORE_PATH = clazzFile.getParent() + File.separator;
 		} catch (URISyntaxException e) {
-			throw new RuntimeException(e);
+			// Should never happen.
+			throw new IllegalArgumentException("Can't parse URL", e);
 		}
 	}
-	private static final String DATA_PATH = DATA_STORE_PATH + "data";
+	public static final String DATA_PATH = DATA_STORE_PATH + "data";
 	private static final String SEQ_PATH = DATA_STORE_PATH + "dataId.seq";
-	
+
 	private static long idCount;
-	private static int port = 8080;
 	private DataStoreServer server;
 
-
-	public static void main(final String[] args) throws DaemonInitException, Exception {
+	public static void main(final String[] args) throws DaemonInitException {
 		DataStore ds = new DataStore();
 		ds.init(new DaemonContext() {
-			
 			@Override
 			public DaemonController getController() {
 				return null;
 			}
-			
+
 			@Override
 			public String[] getArguments() {
 				return args;
 			}
 		});
 		ds.start();
-//		synchronized (ds.server) {
-//			ds.server.wait();
-//			
-//		}
-//		ds.stop();
-//		ds.destroy();
 	}
 
 	public static long addData(InputStream inputStream, long jobId) throws IOException, JobNotFoundException {
 		File dir = getOrCreateJobDirectory(jobId);
 		long newId = updateIdCount();
 
-		File file = new File(dir,Long.toString(newId));
-		if(!file.exists()) {
-			FileOutputStream fileOutputStream = null;
-			try {
-				fileOutputStream = new FileOutputStream(file);
+		File file = new File(dir, Long.toString(newId));
+		if (!file.exists()) {
+			try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
 				IOUtils.copyLarge(inputStream, fileOutputStream);
-			} finally {
-			    safeClose(fileOutputStream);	
-			    IOUtils.closeQuietly(inputStream);
 			}
 		} else {
 			throw new IllegalStateException("Id already exist!");
@@ -106,109 +92,86 @@ public final class DataStore implements Daemon{
 		return newId;
 	}
 
-    private static File getJobDirectory(long job) throws JobNotFoundException {
-        File dir = new File(DATA_PATH, Long.toString(job));
-    	if(!dir.exists()) {
-            throw new JobNotFoundException("Job not found: " + dir);
-        }
-        return dir;
-    }
-
-	synchronized private static	File getOrCreateJobDirectory(long job) throws IllegalStateException{
+	private static File getJobDirectory(long job) throws JobNotFoundException {
 		File dir = new File(DATA_PATH, Long.toString(job));
-    	if(!dir.exists() && !dir.mkdirs()){
-        	throw new IllegalStateException("Can not create directory: " + dir);
-        }
-        return dir;
-	}
-
-    public static File getFileForJob(long job, long ref) throws JobNotFoundException {
-        File dir = getJobDirectory(job);
-        return new File(dir, "" + ref);
-    }
-
-	private static long takeIdFromConf() {
-		BufferedReader bufferedReader = null;
-		try{
-			bufferedReader = new BufferedReader(new FileReader(SEQ_PATH));
-			return Long.parseLong(bufferedReader.readLine());
+		if (!dir.exists()) {
+			throw new JobNotFoundException("Job not found: " + dir);
 		}
-		catch(Exception e){
-			LOGGER.info("Sequence file {} does not exist. New will be created.",SEQ_PATH);
-			return 1;
-		} finally {
-		    safeClose(bufferedReader);
+		return dir;
+	}
+
+	private synchronized static File getOrCreateJobDirectory(long job) {
+		File dir = new File(DATA_PATH, Long.toString(job));
+		if (!dir.exists() && !dir.mkdirs()) {
+			throw new IllegalStateException("Can not create directory: " + dir);
+		}
+		return dir;
+	}
+
+	public static File getFileForJob(long job, long ref) throws JobNotFoundException {
+		File dir = getJobDirectory(job);
+		return new File(dir, "" + ref);
+	}
+
+	private static void takeIdFromConf() {
+		try (BufferedReader bufferedReader = new BufferedReader(new FileReader(SEQ_PATH))) {
+			idCount = Long.parseLong(bufferedReader.readLine());
+		} catch (IOException e) {
+			LOGGER.info("Sequence file {} does not exist. New will be created.", SEQ_PATH);
+			idCount = 1;
 		}
 	}
 
-	private static void safeClose(OutputStream os) {
-	    if (os != null) {
-	        try {
-                os.close();
-            } catch (IOException e) {
-                LOGGER.error(e.getMessage(), e);
-            }
-	    }
-	}
-
-	private static void safeClose(Reader bufferedReader) {
-	    if(bufferedReader != null){
-            try {
-                bufferedReader.close();
-            } catch (IOException e) {
-                LOGGER.error(e.getMessage(), e);
-            }
-        }
-    }
-
-    synchronized private static long updateIdCount() throws IOException{
+	private synchronized static long updateIdCount() throws IOException {
 		long oldId = idCount++;
-		FileChannel fileChannel = new RandomAccessFile(SEQ_PATH,"rw").getChannel();
-		fileChannel.write(ByteBuffer.wrap((Long.toString(idCount) + "\n").getBytes()));
-		fileChannel.close();
+		try (RandomAccessFile rr = new RandomAccessFile(SEQ_PATH, "rw")) {
+			try (FileChannel fileChannel = rr.getChannel()) {
+				fileChannel.write(ByteBuffer.wrap((Long.toString(idCount) + "\n").getBytes()));
+			}
+		}
 		return oldId;
 	}
-    
-    public static String getDataPath() {
-    	return DATA_PATH;
-    }
+
+	public static String getDataPath() {
+		return DATA_PATH;
+	}
 
 	@Override
-	public void init(DaemonContext context) throws DaemonInitException, Exception {
-		if (context.getArguments().length != 0){
-			String optionName = context.getArguments()[0];
-			if (optionName.equals("-p") && optionName.equals("--port")){
-				port = Integer.parseInt(context.getArguments()[1]);
-			}
-			else{
-				if (!optionName.equals("-h") && !optionName.equals("--help")){
-					System.out.println("Unknown parameter " + optionName);
-				}
-				System.out.println(help);
-				System.exit(1);
-			}
+	public void init(DaemonContext context) throws DaemonInitException {
+		DataStoreCmdLineOptions opt = null;
+		try {
+			opt = new DataStoreCmdLineOptions(context.getArguments());
+		} catch (ParseException e) {
+			LOGGER.error("Invalid command line options.\n{}", e);
+			throw new DaemonInitException("Could not initialize daemon.", e);
 		}
 
-		idCount = takeIdFromConf();
-		server = new DataStoreServer(port);
+		// If help is printed we don't want to start server, only terminate app.
+		if (opt.getRbtHostname() != null) {
+			// Start server.
+			takeIdFromConf();
+			server = new DataStoreServer(opt.getPort());
 
+			// Start job data cleaner. (Not thread safe. Only one cleaner should be active all the time.)
+			new Thread(new DataStoreActiveCleaner(opt.getRbtHostname(), opt.getRbtNotifyExch(), opt.getLeaveData(),
+					opt.getCleaningThreadsNumber(), new File(DATA_PATH))).start();
+		}
 	}
 
 	@Override
-	public void start() throws Exception {
-		server.start();
-		
+	public void start() {
+		if (server != null) {
+			server.start();
+		}
 	}
 
 	@Override
-	public void stop() throws Exception {
-			server.close();
-		
+	public void stop() {
+		server.close();
 	}
 
 	@Override
 	public void destroy() {
-		
-
+		// Nothing to do.
 	}
 }
