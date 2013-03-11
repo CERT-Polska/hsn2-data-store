@@ -113,7 +113,7 @@ public final class DataStore implements Daemon {
 		return new File(dir, "" + ref);
 	}
 
-	private static void takeIdFromConf() {
+	private static void setIdFromConf() {
 		try (BufferedReader bufferedReader = new BufferedReader(new FileReader(SEQ_PATH))) {
 			idCount = Long.parseLong(bufferedReader.readLine());
 		} catch (IOException e) {
@@ -149,7 +149,7 @@ public final class DataStore implements Daemon {
 		// If help is printed we don't want to start server, only terminate app.
 		if (opt.getRbtHostname() != null) {
 			// Start server.
-			takeIdFromConf();
+			setIdFromConf();
 			server = new DataStoreServer(opt.getPort());
 
 			// Start job data cleaner. (Not thread safe. Only one cleaner should be active all the time.)
