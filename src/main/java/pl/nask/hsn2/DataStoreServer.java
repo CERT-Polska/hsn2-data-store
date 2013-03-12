@@ -19,18 +19,23 @@
 
 package pl.nask.hsn2;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.Executors;
 
+import kyotocabinet.DB;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pl.nask.hsn2.exceptions.KyotoCabinetException;
 import pl.nask.hsn2.handlers.DataHandler;
 import pl.nask.hsn2.handlers.DefaultHandler;
 
 import com.sun.net.httpserver.HttpServer;
 
+@SuppressWarnings("restriction")
 public class DataStoreServer {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreServer.class);
 	private HttpServer server;
@@ -43,9 +48,13 @@ public class DataStoreServer {
 			throw new RuntimeException("Server error.", e);
 		}
 		server.createContext("/", new DefaultHandler());
-		server.createContext("/data", new DataHandler());
-		server.setExecutor(Executors.newCachedThreadPool());
-		LOGGER.info("Server is listening on port {}", port);
+		try {
+			server.createContext("/data", new DataHandler(getNewKyotoCabDatabase()));
+			server.setExecutor(Executors.newCachedThreadPool());
+			LOGGER.info("Server is listening on port {}", port);
+		} catch (KyotoCabinetException e) {
+			LOGGER.error("Database exception.", e);
+		}
 	}
 
 	public void start() {
@@ -55,5 +64,13 @@ public class DataStoreServer {
 	public void close() {
 		server.stop(0);
 		LOGGER.info("Server is stopped!");
+	}
+
+	private DB getNewKyotoCabDatabase() throws KyotoCabinetException {
+		DB kyotoCabDb = new DB();
+		if (!kyotoCabDb.open(DataStore.DATA_PATH + File.separator + "kyotoCabDb", DB.OWRITER | DB.OCREATE)) {
+			throw new KyotoCabinetException("Could not initialize database. " + kyotoCabDb.error());
+		}
+		return kyotoCabDb;
 	}
 }

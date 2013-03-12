@@ -19,15 +19,13 @@
 
 package pl.nask.hsn2.handlers;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 
-import org.apache.commons.io.IOUtils;
-
+import kyotocabinet.DB;
+import pl.nask.hsn2.BytesLongUtils;
 import pl.nask.hsn2.DataStore;
 import pl.nask.hsn2.exceptions.EntryNotFoundException;
 import pl.nask.hsn2.exceptions.JobNotFoundException;
@@ -35,7 +33,13 @@ import pl.nask.hsn2.exceptions.JobNotFoundException;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 
+@SuppressWarnings("restriction")
 public class DataHandler extends AbstractHandler {
+	private final DB db;
+	
+	public DataHandler(DB kyotoCabDatabase) {
+		db = kyotoCabDatabase;
+	}
 	
 	@Override
 	protected void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException{	
@@ -72,11 +76,11 @@ public class DataHandler extends AbstractHandler {
 		}
 	}
 
-	@SuppressWarnings("restriction")
+	
 	private void handlePost(HttpExchange exchange, long jobId) throws IOException, IllegalStateException, JobNotFoundException {
 		LOGGER.info("Post method. {}", exchange.getRequestURI().getPath());
 
-		String dataId = String.valueOf(DataStore.addData(exchange.getRequestBody(), jobId));
+		String dataId = String.valueOf(DataStore.addData(db, exchange.getRequestBody(), jobId));
 		Headers headers = exchange.getResponseHeaders();
 		headers.set("Content-ID", dataId);
 		headers.set("Location", jobId + "/" + dataId);
@@ -87,25 +91,25 @@ public class DataHandler extends AbstractHandler {
 		LOGGER.info(message);
 	}
 
-	private void handleGet(HttpExchange exchange, long jobId, long entryId) throws IOException, JobNotFoundException, EntryNotFoundException {
+	private void handleGet(HttpExchange exchange, long jobId, long entryId) throws IOException, EntryNotFoundException {
 		LOGGER.info("Get method. {}", exchange.getRequestURI().getPath());
 
-		File file = DataStore.getFileForJob(jobId, entryId);
-		InputStream inputStream = null;
-
-		try{
-			inputStream = new FileInputStream(file);
-			Headers headers = exchange.getResponseHeaders();
-			headers.set("Content-Type", "application/octet-stream");
-			exchange.sendResponseHeaders(200, file.length());
-
-			IOUtils.copyLarge(inputStream, exchange.getResponseBody());
+		// Get value from database.
+		byte[] key = BytesLongUtils.getDatabaseKey(jobId, entryId);
+		byte[] value;
+		if ((value = db.get(key)) == null) {
+			throw new EntryNotFoundException("Entry not found (jobId=" + jobId + ", entryId=" + entryId + ")");
 		}
-		catch(FileNotFoundException e){
-			throw new EntryNotFoundException("Entry not found. Id = " + entryId, e);
-		} finally {
-		    if (inputStream != null)
-		        inputStream.close();
+
+		// Set headers.
+		Headers headers = exchange.getResponseHeaders();
+		headers.set("Content-Type", "application/octet-stream");
+		exchange.sendResponseHeaders(200, value.length);
+
+		// Send data.
+		OutputStream os = exchange.getResponseBody();
+		try (BufferedOutputStream bos = new BufferedOutputStream(os)) {
+			bos.write(value, 0, value.length);
 		}
 	}
 }

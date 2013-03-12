@@ -19,17 +19,10 @@
 
 package pl.nask.hsn2.exceptions;
 
-public class EntryNotFoundException extends Exception {
-	/**
-	 * Serial id.
-	 */
-	private static final long serialVersionUID = 4817927013271018893L;
+public class KyotoCabinetException extends Exception {
+	private static final long serialVersionUID = 1483234546L;
 
-	public EntryNotFoundException(String message) {
-		super(message);
-	}
-
-	public EntryNotFoundException(String message, Throwable e) {
-		super(message, e);
+	public KyotoCabinetException(String string) {
+		super(string);
 	}
 }

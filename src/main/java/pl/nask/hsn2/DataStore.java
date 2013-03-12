@@ -30,6 +30,8 @@ import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
+import kyotocabinet.DB;
+
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.daemon.Daemon;
 import org.apache.commons.daemon.DaemonContext;
@@ -76,28 +78,24 @@ public final class DataStore implements Daemon {
 		ds.start();
 	}
 
-	public static long addData(InputStream inputStream, long jobId) throws IOException, JobNotFoundException {
-		File dir = getOrCreateJobDirectory(jobId);
+	public static long addData(DB kyotoCabDb, InputStream inputStream, long jobId) throws IOException, JobNotFoundException {
+		//File dir = getOrCreateJobDirectory(jobId);
 		long newId = updateIdCount();
+		byte[] key = BytesLongUtils.getDatabaseKey(jobId, newId);
+		
 
-		File file = new File(dir, Long.toString(newId));
-		if (!file.exists()) {
-			try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
-				IOUtils.copyLarge(inputStream, fileOutputStream);
-			}
-		} else {
-			throw new IllegalStateException("Id already exist!");
-		}
+		//File file = new File(dir, Long.toString(newId));
+		//if (!file.exists()) {
+//			try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
+//				IOUtils.copyLarge(inputStream, fileOutputStream);
+//			}
+//		} else {
+//			throw new IllegalStateException("Id already exist!");
+//		}
 
+		
+		
 		return newId;
-	}
-
-	private static File getJobDirectory(long job) throws JobNotFoundException {
-		File dir = new File(DATA_PATH, Long.toString(job));
-		if (!dir.exists()) {
-			throw new JobNotFoundException("Job not found: " + dir);
-		}
-		return dir;
 	}
 
 	private synchronized static File getOrCreateJobDirectory(long job) {
@@ -106,11 +104,6 @@ public final class DataStore implements Daemon {
 			throw new IllegalStateException("Can not create directory: " + dir);
 		}
 		return dir;
-	}
-
-	public static File getFileForJob(long job, long ref) throws JobNotFoundException {
-		File dir = getJobDirectory(job);
-		return new File(dir, "" + ref);
 	}
 
 	private static void setIdFromConf() {
