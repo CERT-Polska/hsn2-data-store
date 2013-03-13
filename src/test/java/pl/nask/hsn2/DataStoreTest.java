@@ -19,12 +19,8 @@
 
 package pl.nask.hsn2;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
 import java.net.URLConnection;
@@ -36,8 +32,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import pl.nask.hsn2.exceptions.JobNotFoundException;
-
 public class DataStoreTest {
 	private long id = -1;
 	private long job = 0;
@@ -47,7 +41,10 @@ public class DataStoreTest {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreTest.class);
 
 	@BeforeClass
-	public void beforeClass() {
+	public void beforeClass() throws IOException {
+		// WST add lib path as CLI parameter
+		KyotoCabinetBytesKeyUtils.addDirToJavaLibraryPath("D:/Prog/kcwin32/java");
+		
 		deleteDirectory("data" + File.separator + job);
 		deleteDirectory(DataStore.getDataPath() + File.separator + job);
 		server = new DataStoreServer(port);

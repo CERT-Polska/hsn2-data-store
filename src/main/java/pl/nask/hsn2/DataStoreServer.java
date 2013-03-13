@@ -68,7 +68,7 @@ public class DataStoreServer {
 
 	private DB getNewKyotoCabDatabase() throws KyotoCabinetException {
 		DB kyotoCabDb = new DB();
-		if (!kyotoCabDb.open(DataStore.DATA_PATH + File.separator + "kyotoCabDb", DB.OWRITER | DB.OCREATE)) {
+		if (!kyotoCabDb.open("kyotoCabDb.kch", DB.OWRITER | DB.OCREATE)) {
 			throw new KyotoCabinetException("Could not initialize database. " + kyotoCabDb.error());
 		}
 		return kyotoCabDb;

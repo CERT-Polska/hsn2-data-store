@@ -25,44 +25,53 @@ import java.io.OutputStream;
 import java.net.URI;
 
 import kyotocabinet.DB;
-import pl.nask.hsn2.BytesLongUtils;
 import pl.nask.hsn2.DataStore;
+import pl.nask.hsn2.KyotoCabinetBytesKeyUtils;
 import pl.nask.hsn2.exceptions.EntryNotFoundException;
 import pl.nask.hsn2.exceptions.JobNotFoundException;
 
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 
+/**
+ * Main DataStore data handler. It handles POST and GET requests.
+ */
 @SuppressWarnings("restriction")
 public class DataHandler extends AbstractHandler {
+	/**
+	 * Kyoto Cabinet database.
+	 */
 	private final DB db;
-	
+
+	/**
+	 * Constructor.
+	 * 
+	 * @param kyotoCabDatabase
+	 */
 	public DataHandler(DB kyotoCabDatabase) {
 		db = kyotoCabDatabase;
 	}
-	
+
+	/**
+	 * Handles request.
+	 */
 	@Override
-	protected void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException{	
-		
+	protected void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException {
 		String[] args = exchange.getRequestURI().getPath().split("/");
 		try {
 			if ("GET".equalsIgnoreCase(requestMethod)) {
 				if (args.length > 3) {
 					handleGet(exchange, Long.parseLong(args[2]), Long.parseLong(args[3]));
-				}
-				else{
+				} else {
 					throw new JobNotFoundException("Job or entry id not found.");
 				}
-			}
-			else if ("POST".equalsIgnoreCase(requestMethod)) {
-				if (args.length > 2){
+			} else if ("POST".equalsIgnoreCase(requestMethod)) {
+				if (args.length > 2) {
 					handlePost(exchange, Long.parseLong(args[2]));
-				}
-				else{
+				} else {
 					throw new JobNotFoundException("Job not found.");
 				}
-			}
-			else{
+			} else {
 				throw new UnsupportedOperationException("Unsupported method: " + requestMethod);
 			}
 		} catch (NumberFormatException e) {
@@ -76,26 +85,45 @@ public class DataHandler extends AbstractHandler {
 		}
 	}
 
-	
-	private void handlePost(HttpExchange exchange, long jobId) throws IOException, IllegalStateException, JobNotFoundException {
+	/**
+	 * Handles POST request.
+	 * 
+	 * @param exchange
+	 * @param jobId
+	 * @throws IOException
+	 */
+	private void handlePost(HttpExchange exchange, long jobId) throws IOException {
 		LOGGER.info("Post method. {}", exchange.getRequestURI().getPath());
 
+		// Store data and get new ref id for it.
 		String dataId = String.valueOf(DataStore.addData(db, exchange.getRequestBody(), jobId));
+
+		// Set response headers.
 		Headers headers = exchange.getResponseHeaders();
 		headers.set("Content-ID", dataId);
 		headers.set("Location", jobId + "/" + dataId);
 		String message = "New entry added with id: " + dataId;
-		
+
+		// Send response.
 		exchange.sendResponseHeaders(201, message.length());
 		exchange.getResponseBody().write(message.getBytes());
 		LOGGER.info(message);
 	}
 
+	/**
+	 * Handles GET request.
+	 * 
+	 * @param exchange
+	 * @param jobId
+	 * @param entryId
+	 * @throws IOException
+	 * @throws EntryNotFoundException
+	 */
 	private void handleGet(HttpExchange exchange, long jobId, long entryId) throws IOException, EntryNotFoundException {
 		LOGGER.info("Get method. {}", exchange.getRequestURI().getPath());
 
 		// Get value from database.
-		byte[] key = BytesLongUtils.getDatabaseKey(jobId, entryId);
+		byte[] key = KyotoCabinetBytesKeyUtils.getDatabaseKey(jobId, entryId);
 		byte[] value;
 		if ((value = db.get(key)) == null) {
 			throw new EntryNotFoundException("Entry not found (jobId=" + jobId + ", entryId=" + entryId + ")");

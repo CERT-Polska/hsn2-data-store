@@ -20,8 +20,8 @@
 package pl.nask.hsn2;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -40,8 +40,6 @@ import org.apache.commons.daemon.DaemonInitException;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import pl.nask.hsn2.exceptions.JobNotFoundException;
 
 public final class DataStore implements Daemon {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStore.class);
@@ -62,7 +60,12 @@ public final class DataStore implements Daemon {
 	private static long idCount;
 	private DataStoreServer server;
 
-	public static void main(final String[] args) throws DaemonInitException {
+	public static void main(final String[] args) throws DaemonInitException, IOException {
+		// D:/Prog/kcwin32/java/jkyotocabinet.dll
+
+		// WST add lib path as CLI parameter
+		KyotoCabinetBytesKeyUtils.addDirToJavaLibraryPath("D:/Prog/kcwin32/java");
+
 		DataStore ds = new DataStore();
 		ds.init(new DaemonContext() {
 			@Override
@@ -78,32 +81,27 @@ public final class DataStore implements Daemon {
 		ds.start();
 	}
 
-	public static long addData(DB kyotoCabDb, InputStream inputStream, long jobId) throws IOException, JobNotFoundException {
-		//File dir = getOrCreateJobDirectory(jobId);
+	/**
+	 * Adds data to DataStore.
+	 * 
+	 * @param kyotoCabDb
+	 *            Kyoto Cabinet database.
+	 * @param inputStream
+	 *            Input stream representing data to store.
+	 * @param jobId
+	 *            Job id.
+	 * @return Newly created data's reference id.
+	 * @throws IOException
+	 *             When there's some problem with input/output.
+	 */
+	public static long addData(DB kyotoCabDb, InputStream inputStream, long jobId) throws IOException {
 		long newId = updateIdCount();
-		byte[] key = BytesLongUtils.getDatabaseKey(jobId, newId);
-		
-
-		//File file = new File(dir, Long.toString(newId));
-		//if (!file.exists()) {
-//			try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
-//				IOUtils.copyLarge(inputStream, fileOutputStream);
-//			}
-//		} else {
-//			throw new IllegalStateException("Id already exist!");
-//		}
-
-		
-		
-		return newId;
-	}
-
-	private synchronized static File getOrCreateJobDirectory(long job) {
-		File dir = new File(DATA_PATH, Long.toString(job));
-		if (!dir.exists() && !dir.mkdirs()) {
-			throw new IllegalStateException("Can not create directory: " + dir);
+		byte[] key = KyotoCabinetBytesKeyUtils.getDatabaseKey(jobId, newId);
+		try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+			IOUtils.copyLarge(inputStream, baos);
+			kyotoCabDb.set(key, baos.toByteArray());
 		}
-		return dir;
+		return newId;
 	}
 
 	private static void setIdFromConf() {
@@ -116,13 +114,13 @@ public final class DataStore implements Daemon {
 	}
 
 	private synchronized static long updateIdCount() throws IOException {
-		long oldId = idCount++;
+		long newId = idCount++;
 		try (RandomAccessFile rr = new RandomAccessFile(SEQ_PATH, "rw")) {
 			try (FileChannel fileChannel = rr.getChannel()) {
 				fileChannel.write(ByteBuffer.wrap((Long.toString(idCount) + "\n").getBytes()));
 			}
 		}
-		return oldId;
+		return newId;
 	}
 
 	public static String getDataPath() {
