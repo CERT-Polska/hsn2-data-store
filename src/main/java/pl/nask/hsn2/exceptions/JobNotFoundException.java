@@ -20,6 +20,10 @@
 package pl.nask.hsn2.exceptions;
 
 public class JobNotFoundException extends Exception {
+	/**
+	 * Serial ID.
+	 */
+	private static final long serialVersionUID = 7847266289118652363L;
 
 	public JobNotFoundException(String string) {
 		super(string);
