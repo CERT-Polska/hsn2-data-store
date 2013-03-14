@@ -32,6 +32,7 @@ import pl.nask.hsn2.protobuff.Jobs.JobFinished;
 import pl.nask.hsn2.protobuff.Jobs.JobFinishedReminder;
 import pl.nask.hsn2.protobuff.Jobs.JobStatus;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
@@ -111,25 +112,32 @@ public class DataStoreActiveCleaner implements Runnable {
 			while (true) {
 				// Listen for message.
 				Delivery delivery = consumer.nextDelivery();
-				LOGGER.info("Got delivery", delivery.getEnvelope());
+				String type = delivery.getProperties().getType();
+				LOGGER.debug("Got delivery {}", type);
 
 				// Clean if job finished data.
-				if ("JobFinished".equals(delivery.getProperties().getType())) {
-					JobFinished jobFinishedData = JobFinished.parseFrom(delivery.getBody());
-					startJobDataRemoving(jobFinishedData.getJob(), jobFinishedData.getStatus());
-				} else if ("JobFinishedReminder".equals(delivery.getProperties().getType())) {
-					JobFinishedReminder jobFinishedData = JobFinishedReminder.parseFrom(delivery.getBody());
-					startJobDataRemoving(jobFinishedData.getJob(), jobFinishedData.getStatus());
+				try{
+					if ("JobFinished".equals(type)) {
+						JobFinished jobFinishedData = JobFinished.parseFrom(delivery.getBody());
+						startJobDataRemoving(jobFinishedData.getJob(), jobFinishedData.getStatus());
+					} else if ("JobFinishedReminder".equals(type)) {
+						JobFinishedReminder jobFinishedData = JobFinishedReminder.parseFrom(delivery.getBody());
+						startJobDataRemoving(jobFinishedData.getJob(), jobFinishedData.getStatus());
+					}
+				}
+				catch(InvalidProtocolBufferException e){
+					LOGGER.warn("Invalid message! Expected: " + type, e);
 				}
 			}
 		} catch (ShutdownSignalException e) {
-			LOGGER.info("Shutdown signal received.", e);
+			LOGGER.warn("Shutdown signal received.", e);
+			System.exit(5);
 		} catch (ConsumerCancelledException e) {
 			LOGGER.info("Cancell signal received.", e);
 		} catch (InterruptedException e) {
-			LOGGER.info("Interrupted.", e);
+			LOGGER.error("Interrupted.", e);
 		} catch (IOException e) {
-			LOGGER.info("Connection issue.", e);
+			LOGGER.error("Connection issue.", e);
 		}
 	}
 
