@@ -54,6 +54,10 @@ public class DataStoreActiveCleaner implements Runnable {
 	private final String rbtHostName;
 	private final String rbtNotifyExchName;
 	private final LeaveJobOption leaveJob;
+	/**
+	 * Set containing jobs id for which cleaning process has been initialized. Job id should be removed when all job
+	 * data has been cleared.
+	 */
 	private final ConcurrentSkipListSet<Long> actualCleaningJobs = new ConcurrentSkipListSet<>();
 	private final ExecutorService executor;
 	/**
@@ -61,6 +65,13 @@ public class DataStoreActiveCleaner implements Runnable {
 	 */
 	private Connection rbtConnection;
 	private final File dataDir;
+	/**
+	 * Set containing active jobs ids. Active job is ongoing job, which means that there is already job table
+	 * initialized in H2 Database. JobId should be removed from set upon job finish message (or reminder message).
+	 */
+	private final ConcurrentSkipListSet<Long> activeJobsSet;
+	
+	// WST make sure that job is removed from set above after it's finished
 
 	/**
 	 * Creates new active cleaner.
@@ -73,14 +84,16 @@ public class DataStoreActiveCleaner implements Runnable {
 	 *            Leave job option, in order to filter out jobs to clean using their completion status.
 	 * @param cleaningThreadsNumber
 	 *            Number of thread pool of single job cleaner.
+	 * @param activeJobsSet 
 	 */
 	public DataStoreActiveCleaner(String rbtServerHostname, String rbtNotifyExchangeName, LeaveJobOption leaveJobValue,
-			int cleaningThreadsNumber, File file) {
+			int cleaningThreadsNumber, File file, ConcurrentSkipListSet<Long> activeJobs) {
 		rbtHostName = rbtServerHostname;
 		rbtNotifyExchName = rbtNotifyExchangeName;
 		leaveJob = leaveJobValue;
 		executor = Executors.newFixedThreadPool(cleaningThreadsNumber);
 		dataDir = file;
+		activeJobsSet = activeJobs;
 		LOGGER.info("Active cleaner initialized. (leaveJob={}, rbtHost={}, rbtNotifyExch={}, threads={})", new Object[] { leaveJob,
 				rbtHostName, rbtNotifyExchName, cleaningThreadsNumber });
 	}

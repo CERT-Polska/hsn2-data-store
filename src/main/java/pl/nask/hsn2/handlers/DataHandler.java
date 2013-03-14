@@ -25,6 +25,13 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 import org.apache.commons.io.IOUtils;
 
@@ -35,35 +42,38 @@ import pl.nask.hsn2.exceptions.JobNotFoundException;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 
+@SuppressWarnings("restriction")
 public class DataHandler extends AbstractHandler {
-	
+	private final Connection h2Connection;
+	private final ConcurrentSkipListSet<Long> activeJobsSet;
+
+	public DataHandler(Connection h2dbConnection, ConcurrentSkipListSet<Long> activeJobs) {
+		h2Connection = h2dbConnection;
+		activeJobsSet = activeJobs;
+	}
+
 	@Override
-	protected void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException{	
-		
+	protected void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException {
 		String[] args = exchange.getRequestURI().getPath().split("/");
 		try {
 			if ("GET".equalsIgnoreCase(requestMethod)) {
 				if (args.length > 3) {
 					handleGet(exchange, Long.parseLong(args[2]), Long.parseLong(args[3]));
-				}
-				else{
+				} else {
 					throw new JobNotFoundException("Job or entry id not found.");
 				}
-			}
-			else if ("POST".equalsIgnoreCase(requestMethod)) {
-				if (args.length > 2){
+			} else if ("POST".equalsIgnoreCase(requestMethod)) {
+				if (args.length > 2) {
 					handlePost(exchange, Long.parseLong(args[2]));
-				}
-				else{
+				} else {
 					throw new JobNotFoundException("Job not found.");
 				}
-			}
-			else{
+			} else {
 				throw new UnsupportedOperationException("Unsupported method: " + requestMethod);
 			}
 		} catch (NumberFormatException e) {
 			handleError(exchange, 500, "Job or entry id is not a number!", e);
-		} catch (IllegalStateException e) {
+		} catch (IllegalStateException | SQLException e) {
 			handleError(exchange, 500, e);
 		} catch (JobNotFoundException e) {
 			handleError(exchange, 403, e);
@@ -72,40 +82,90 @@ public class DataHandler extends AbstractHandler {
 		}
 	}
 
-	@SuppressWarnings("restriction")
-	private void handlePost(HttpExchange exchange, long jobId) throws IOException, IllegalStateException, JobNotFoundException {
+	private void handlePost(HttpExchange exchange, long jobId) throws IOException, IllegalStateException, JobNotFoundException, SQLException {
 		LOGGER.info("Post method. {}", exchange.getRequestURI().getPath());
-
-		String dataId = String.valueOf(DataStore.addData(exchange.getRequestBody(), jobId));
+		
+		String dataId = String.valueOf(addData(exchange.getRequestBody(), jobId));
 		Headers headers = exchange.getResponseHeaders();
 		headers.set("Content-ID", dataId);
 		headers.set("Location", jobId + "/" + dataId);
 		String message = "New entry added with id: " + dataId;
-		
+
 		exchange.sendResponseHeaders(201, message.length());
 		exchange.getResponseBody().write(message.getBytes());
 		LOGGER.info(message);
 	}
 
-	private void handleGet(HttpExchange exchange, long jobId, long entryId) throws IOException, JobNotFoundException, EntryNotFoundException {
+	private long addData(InputStream inputStream, long jobId) throws IOException, SQLException {
+		long newId = DataStore.updateIdCount();
+
+		// Check if job's table exists.
+		if (!activeJobsSet.contains(jobId)) {
+			createTableIfNotExists(jobId);
+			activeJobsSet.add(jobId);
+		}
+
+		// Add data to database.
+		String sqlQuery = "INSERT INTO JOB_" + jobId + " VALUES(?, ?)";
+		try (PreparedStatement statement = h2Connection.prepareStatement(sqlQuery)) {
+			statement.setLong(1, newId);
+			statement.setBlob(2, inputStream);
+			int rowsChanged = statement.executeUpdate();
+			if (rowsChanged < 1) {
+				throw new SQLException("Add data, failure. Nothing inserted.");
+			}
+		}
+
+		return newId;
+	}
+
+	private void createTableIfNotExists(long jobId) throws SQLException {
+		String tableName = "JOB_" + jobId;
+		DatabaseMetaData dbm = h2Connection.getMetaData();
+		// Check if table is there.
+		try (ResultSet tables = dbm.getTables(null, null, tableName, null)) {
+			boolean tableExists = tables.next();
+			if (!tableExists) {
+				// Table not exists.
+				try (Statement s = h2Connection.createStatement()) {
+					boolean resultCreateTable = s.execute("CREATE TABLE " + tableName + " (ID BIGINT, DATA IMAGE)");
+					if (resultCreateTable) {
+						// Should never happen.
+						LOGGER.debug("Create table, failed.");
+					} else {
+						resultCreateTable = s.execute("ALTER TABLE " + tableName + " ADD UNIQUE (ID)");
+						if (resultCreateTable) {
+							LOGGER.debug("Create table, done. Make ID unique, failed.");
+						} else {
+							LOGGER.debug("Create table, done. Make ID unique, done.");
+						}
+					}
+				}
+			} else {
+				LOGGER.debug("Create table, ignored. Table already exists.");
+			}
+		}
+	}
+
+	private void handleGet(HttpExchange exchange, long jobId, long entryId) throws IOException, JobNotFoundException,
+			EntryNotFoundException {
 		LOGGER.info("Get method. {}", exchange.getRequestURI().getPath());
 
 		File file = DataStore.getFileForJob(jobId, entryId);
 		InputStream inputStream = null;
 
-		try{
+		try {
 			inputStream = new FileInputStream(file);
 			Headers headers = exchange.getResponseHeaders();
 			headers.set("Content-Type", "application/octet-stream");
 			exchange.sendResponseHeaders(200, file.length());
 
 			IOUtils.copyLarge(inputStream, exchange.getResponseBody());
-		}
-		catch(FileNotFoundException e){
+		} catch (FileNotFoundException e) {
 			throw new EntryNotFoundException("Entry not found. Id = " + entryId, e);
 		} finally {
-		    if (inputStream != null)
-		        inputStream.close();
+			if (inputStream != null)
+				inputStream.close();
 		}
 	}
 }

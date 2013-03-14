@@ -19,8 +19,13 @@
 
 package pl.nask.hsn2;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
@@ -31,11 +36,15 @@ import pl.nask.hsn2.handlers.DefaultHandler;
 
 import com.sun.net.httpserver.HttpServer;
 
+@SuppressWarnings("restriction")
 public class DataStoreServer {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreServer.class);
 	private HttpServer server;
+	private final Connection h2Connector;
 
-	public DataStoreServer(int port) {
+	public DataStoreServer(int port, ConcurrentSkipListSet<Long> activeJobs) throws ClassNotFoundException, SQLException {
+		Class.forName("org.h2.Driver");
+		h2Connector = DriverManager.getConnection("jdbc:h2:" + DataStore.DATA_PATH + File.separator + "test-h2db", "sa", "");
 		InetSocketAddress addr = new InetSocketAddress(port);
 		try {
 			server = HttpServer.create(addr, 0);
@@ -43,7 +52,7 @@ public class DataStoreServer {
 			throw new RuntimeException("Server error.", e);
 		}
 		server.createContext("/", new DefaultHandler());
-		server.createContext("/data", new DataHandler());
+		server.createContext("/data", new DataHandler(h2Connector, activeJobs));
 		server.setExecutor(Executors.newCachedThreadPool());
 		LOGGER.info("Server is listening on port {}", port);
 	}
@@ -52,7 +61,8 @@ public class DataStoreServer {
 		server.start();
 	}
 
-	public void close() {
+	public void close() throws SQLException {
+		h2Connector.close();
 		server.stop(0);
 		LOGGER.info("Server is stopped!");
 	}

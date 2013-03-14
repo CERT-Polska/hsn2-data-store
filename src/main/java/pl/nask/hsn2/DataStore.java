@@ -29,6 +29,10 @@ import java.io.RandomAccessFile;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.daemon.Daemon;
@@ -76,34 +80,11 @@ public final class DataStore implements Daemon {
 		ds.start();
 	}
 
-	public static long addData(InputStream inputStream, long jobId) throws IOException, JobNotFoundException {
-		File dir = getOrCreateJobDirectory(jobId);
-		long newId = updateIdCount();
-
-		File file = new File(dir, Long.toString(newId));
-		if (!file.exists()) {
-			try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
-				IOUtils.copyLarge(inputStream, fileOutputStream);
-			}
-		} else {
-			throw new IllegalStateException("Id already exist!");
-		}
-
-		return newId;
-	}
 
 	private static File getJobDirectory(long job) throws JobNotFoundException {
 		File dir = new File(DATA_PATH, Long.toString(job));
 		if (!dir.exists()) {
 			throw new JobNotFoundException("Job not found: " + dir);
-		}
-		return dir;
-	}
-
-	private synchronized static File getOrCreateJobDirectory(long job) {
-		File dir = new File(DATA_PATH, Long.toString(job));
-		if (!dir.exists() && !dir.mkdirs()) {
-			throw new IllegalStateException("Can not create directory: " + dir);
 		}
 		return dir;
 	}
@@ -122,7 +103,7 @@ public final class DataStore implements Daemon {
 		}
 	}
 
-	private synchronized static long updateIdCount() throws IOException {
+	public synchronized static long updateIdCount() throws IOException {
 		long oldId = idCount++;
 		try (RandomAccessFile rr = new RandomAccessFile(SEQ_PATH, "rw")) {
 			try (FileChannel fileChannel = rr.getChannel()) {
@@ -136,6 +117,8 @@ public final class DataStore implements Daemon {
 		return DATA_PATH;
 	}
 
+	private ConcurrentSkipListSet<Long> activeJobsSet = new ConcurrentSkipListSet<>();
+	
 	@Override
 	public void init(DaemonContext context) throws DaemonInitException {
 		DataStoreCmdLineOptions opt = null;
@@ -150,11 +133,15 @@ public final class DataStore implements Daemon {
 		if (opt.getRbtHostname() != null) {
 			// Start server.
 			setIdFromConf();
-			server = new DataStoreServer(opt.getPort());
+			try {
+				server = new DataStoreServer(opt.getPort(), activeJobsSet);
+			} catch (ClassNotFoundException | SQLException e) {
+				throw new DaemonInitException("Initialization failure.", e);
+			}
 
 			// Start job data cleaner. (Not thread safe. Only one cleaner should be active all the time.)
 			new Thread(new DataStoreActiveCleaner(opt.getRbtHostname(), opt.getRbtNotifyExch(), opt.getLeaveData(),
-					opt.getCleaningThreadsNumber(), new File(DATA_PATH))).start();
+					opt.getCleaningThreadsNumber(), new File(DATA_PATH), activeJobsSet)).start();
 		}
 	}
 
@@ -166,8 +153,12 @@ public final class DataStore implements Daemon {
 	}
 
 	@Override
-	public void stop() {
-		server.close();
+	public void stop() throws DaemonInitException {
+		try {
+			server.close();
+		} catch (SQLException e) {
+			throw new DaemonInitException("Finalization failure.", e);
+		}
 	}
 
 	@Override
