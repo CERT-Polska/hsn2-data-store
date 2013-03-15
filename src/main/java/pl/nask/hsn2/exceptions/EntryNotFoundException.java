@@ -20,6 +20,10 @@
 package pl.nask.hsn2.exceptions;
 
 public class EntryNotFoundException extends Exception {
+	/**
+	 * Serial ID.
+	 */
+	private static final long serialVersionUID = 4817927013271018893L;
 
 	public EntryNotFoundException(String message,Throwable e) {
 		super(message, e);
