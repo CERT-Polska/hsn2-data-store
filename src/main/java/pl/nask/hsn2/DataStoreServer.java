@@ -19,11 +19,9 @@
 
 package pl.nask.hsn2;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.Executors;
@@ -40,11 +38,10 @@ import com.sun.net.httpserver.HttpServer;
 public class DataStoreServer {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreServer.class);
 	private HttpServer server;
-	private final Connection h2Connector;
+	private final Connection h2Connection;
 
-	public DataStoreServer(int port, ConcurrentSkipListSet<Long> activeJobs) throws ClassNotFoundException, SQLException {
-		Class.forName("org.h2.Driver");
-		h2Connector = DriverManager.getConnection("jdbc:h2:" + DataStore.DATA_PATH + File.separator + "test-h2db", "sa", "");
+	public DataStoreServer(int port, ConcurrentSkipListSet<Long> activeJobs, Connection h2dbConnection) throws ClassNotFoundException, SQLException {
+		h2Connection = h2dbConnection;
 		InetSocketAddress addr = new InetSocketAddress(port);
 		try {
 			server = HttpServer.create(addr, 0);
@@ -52,7 +49,7 @@ public class DataStoreServer {
 			throw new RuntimeException("Server error.", e);
 		}
 		server.createContext("/", new DefaultHandler());
-		server.createContext("/data", new DataHandler(h2Connector, activeJobs));
+		server.createContext("/data", new DataHandler(h2Connection, activeJobs));
 		server.setExecutor(Executors.newCachedThreadPool());
 		LOGGER.info("Server is listening on port {}", port);
 	}
@@ -62,7 +59,7 @@ public class DataStoreServer {
 	}
 
 	public void close() throws SQLException {
-		h2Connector.close();
+		h2Connection.close();
 		server.stop(0);
 		LOGGER.info("Server is stopped!");
 	}

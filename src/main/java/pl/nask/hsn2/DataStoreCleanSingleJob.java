@@ -19,7 +19,9 @@
 
 package pl.nask.hsn2;
 
-import java.io.File;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 import org.slf4j.Logger;
@@ -30,13 +32,16 @@ public class DataStoreCleanSingleJob implements Runnable {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreCleanSingleJob.class);
 	private final ConcurrentSkipListSet<Long> currentlyCleaningJobs;
 	private final long jobId;
-	private final File dirToClean;
+	private final Connection h2Connection;
+	private final ConcurrentSkipListSet<Long> activeJobs;
 
-	public DataStoreCleanSingleJob(ConcurrentSkipListSet<Long> actualCleaningJobsList, long jobIdToClean, File dataDirToClean) {
+	public DataStoreCleanSingleJob(ConcurrentSkipListSet<Long> actualCleaningJobsList, long jobIdToClean, Connection h2dbConnection,
+			ConcurrentSkipListSet<Long> activeJobsSet) {
+		activeJobs = activeJobsSet;
+		h2Connection = h2dbConnection;
 		currentlyCleaningJobs = actualCleaningJobsList;
 		jobId = jobIdToClean;
 		currentlyCleaningJobs.add(jobId);
-		dirToClean = dataDirToClean;
 		LOGGER.debug("Single cleaner initialized. (job={})", jobIdToClean);
 	}
 
@@ -46,12 +51,25 @@ public class DataStoreCleanSingleJob implements Runnable {
 		long time = System.currentTimeMillis();
 
 		// Clean.
-		DataStoreCleaner.deleteNonEmptyDirectory(dirToClean);
+		try {
+			dropJobTable();
+		} catch (SQLException e) {
+			LOGGER.error("Drop database, failed.", e);
+		}
 
 		// Task ended. Remove job from actual cleaning jobs list.
 		currentlyCleaningJobs.remove(jobId);
+		activeJobs.remove(jobId);
 
 		time = System.currentTimeMillis() - time;
 		LOGGER.info("Single cleaner task finished. (job={}, time[sec]={})", jobId, time / ONE_MIN_IN_MS);
+	}
+
+	private void dropJobTable() throws SQLException {
+		String sqlQuery = "DROP TABLE JOB_" + jobId;
+		try (PreparedStatement statement = h2Connection.prepareStatement(sqlQuery)) {
+			statement.execute();
+			LOGGER.info("Table delete - done.");
+		}
 	}
 }

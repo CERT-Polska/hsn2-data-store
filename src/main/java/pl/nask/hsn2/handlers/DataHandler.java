@@ -19,12 +19,10 @@
 
 package pl.nask.hsn2.handlers;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.sql.Blob;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -82,9 +80,10 @@ public class DataHandler extends AbstractHandler {
 		}
 	}
 
-	private void handlePost(HttpExchange exchange, long jobId) throws IOException, IllegalStateException, JobNotFoundException, SQLException {
+	private void handlePost(HttpExchange exchange, long jobId) throws IOException, IllegalStateException, JobNotFoundException,
+			SQLException {
 		LOGGER.info("Post method. {}", exchange.getRequestURI().getPath());
-		
+
 		String dataId = String.valueOf(addData(exchange.getRequestBody(), jobId));
 		Headers headers = exchange.getResponseHeaders();
 		headers.set("Content-ID", dataId);
@@ -148,24 +147,45 @@ public class DataHandler extends AbstractHandler {
 	}
 
 	private void handleGet(HttpExchange exchange, long jobId, long entryId) throws IOException, JobNotFoundException,
-			EntryNotFoundException {
+			EntryNotFoundException, SQLException {
 		LOGGER.info("Get method. {}", exchange.getRequestURI().getPath());
 
-		File file = DataStore.getFileForJob(jobId, entryId);
-		InputStream inputStream = null;
-
-		try {
-			inputStream = new FileInputStream(file);
+		try (InputStream is = getData(jobId, entryId)) {
 			Headers headers = exchange.getResponseHeaders();
 			headers.set("Content-Type", "application/octet-stream");
-			exchange.sendResponseHeaders(200, file.length());
+			// WST poprawic size
+			int size = 0;
+			exchange.sendResponseHeaders(200, size);
+			IOUtils.copyLarge(is, exchange.getResponseBody());
 
-			IOUtils.copyLarge(inputStream, exchange.getResponseBody());
-		} catch (FileNotFoundException e) {
-			throw new EntryNotFoundException("Entry not found. Id = " + entryId, e);
-		} finally {
-			if (inputStream != null)
-				inputStream.close();
+		}
+	}
+
+	/**
+	 * Gets data for given job and entry id. If more that one data is found it will return only first item (such
+	 * situation should not happen though).
+	 * 
+	 * @param jobId
+	 *            Job id.
+	 * @param entryId
+	 *            Entry id.
+	 * @return Input stream representing requested data.
+	 * @throws SQLException
+	 *             When nothing has been found or other SQL issue appears.
+	 */
+	private InputStream getData(long jobId, long entryId) throws SQLException {
+		Blob data = null;
+		try (PreparedStatement statement = h2Connection.prepareStatement("SELECT DATA FROM JOB_" + jobId + " WHERE ID=?")) {
+			statement.setLong(1, entryId);
+			ResultSet result = statement.executeQuery();
+			if (result.next()) {
+				data = result.getBlob(1);
+			}
+		}
+		if (data == null) {
+			throw new SQLException("No data found.");
+		} else {
+			return data.getBinaryStream();
 		}
 	}
 }

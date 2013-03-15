@@ -41,8 +41,8 @@ public class DataStorePerformanceTest {
 	private static final int HOW_MANY_FILES = 1000;
 	private static final long JOB_ID = 123456789;
 	private static final int THREADS_NUMBER = 10;
-	private static final int SMALL_FILE_SIZE = 10000;
-	private static final int BIG_FILE_SIZE = 9437000;
+	private static final int SMALL_FILE_SIZE = 10000000;
+	private static final int BIG_FILE_SIZE = 35000000;
 
 	private static final DataStoreConnector DS_CONN = new DataStoreConnectorImpl("http://127.0.0.1:8080/");
 	private static final String RBT_HOST_NAME = "localhost";
@@ -62,7 +62,7 @@ public class DataStorePerformanceTest {
 	static {
 		// Prepare test String.
 		StringBuilder sb = new StringBuilder();
-		for (int i = 0; i < 100; i++) {
+		for (int i = 0; i < 200; i++) {
 			sb.append(TEST_TEXT);
 		}
 		STRING_FOR_DATA_STORE = sb.toString();

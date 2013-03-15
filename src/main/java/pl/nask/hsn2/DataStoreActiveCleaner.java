@@ -19,7 +19,6 @@
 
 package pl.nask.hsn2;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
@@ -64,12 +63,12 @@ public class DataStoreActiveCleaner implements Runnable {
 	 * RabbitMQ connection.
 	 */
 	private Connection rbtConnection;
-	private final File dataDir;
 	/**
 	 * Set containing active jobs ids. Active job is ongoing job, which means that there is already job table
 	 * initialized in H2 Database. JobId should be removed from set upon job finish message (or reminder message).
 	 */
 	private final ConcurrentSkipListSet<Long> activeJobsSet;
+	private final java.sql.Connection h2Connection;
 	
 	// WST make sure that job is removed from set above after it's finished
 
@@ -84,15 +83,16 @@ public class DataStoreActiveCleaner implements Runnable {
 	 *            Leave job option, in order to filter out jobs to clean using their completion status.
 	 * @param cleaningThreadsNumber
 	 *            Number of thread pool of single job cleaner.
+	 * @param h2Connector 
 	 * @param activeJobsSet 
 	 */
 	public DataStoreActiveCleaner(String rbtServerHostname, String rbtNotifyExchangeName, LeaveJobOption leaveJobValue,
-			int cleaningThreadsNumber, File file, ConcurrentSkipListSet<Long> activeJobs) {
+			int cleaningThreadsNumber, ConcurrentSkipListSet<Long> activeJobs, java.sql.Connection h2dbConnector) {
+		h2Connection = h2dbConnector;
 		rbtHostName = rbtServerHostname;
 		rbtNotifyExchName = rbtNotifyExchangeName;
 		leaveJob = leaveJobValue;
 		executor = Executors.newFixedThreadPool(cleaningThreadsNumber);
-		dataDir = file;
 		activeJobsSet = activeJobs;
 		LOGGER.info("Active cleaner initialized. (leaveJob={}, rbtHost={}, rbtNotifyExch={}, threads={})", new Object[] { leaveJob,
 				rbtHostName, rbtNotifyExchName, cleaningThreadsNumber });
@@ -166,17 +166,16 @@ public class DataStoreActiveCleaner implements Runnable {
 		if (actualCleaningJobs.contains(jobId)) {
 			LOGGER.info("Job data clean request ignored. Already cleaning. (jobId={})", jobId);
 		} else {
-			File jobDataDir = new File(dataDir.getAbsolutePath(), "" + jobId);
-			if (jobDataDir.exists()) {
+			if (activeJobsSet.contains(jobId)) {
 				if (isJobStatusEligibleToClean(jobStatus)) {
 					LOGGER.info("Job data clean request added. (jobId={})", jobId);
-					executor.execute(new DataStoreCleanSingleJob(actualCleaningJobs, jobId, jobDataDir));
+					executor.execute(new DataStoreCleanSingleJob(actualCleaningJobs, jobId, h2Connection, activeJobsSet));
 				} else {
 					LOGGER.info("Job data clean request ignored. Job status not eligible. (jobId={}, status={})", jobId,
 							jobStatus.toString());
 				}
 			} else {
-				LOGGER.info("Job data clean request ignored. Data directory not exists. (jobId={})", jobId);
+				LOGGER.info("Job data clean request ignored. Job id not found in active jobs set. (jobId={})", jobId);
 			}
 		}
 	}
