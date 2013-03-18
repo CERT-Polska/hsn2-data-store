@@ -24,6 +24,7 @@ import java.net.URI;
 
 import com.sun.net.httpserver.HttpExchange;
 
+@SuppressWarnings("restriction")
 public class DefaultHandler extends AbstractHandler{
 	
 	@Override

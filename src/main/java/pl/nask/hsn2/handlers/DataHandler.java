@@ -35,6 +35,7 @@ import pl.nask.hsn2.exceptions.JobNotFoundException;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 
+@SuppressWarnings("restriction")
 public class DataHandler extends AbstractHandler {
 	
 	@Override
@@ -72,7 +73,6 @@ public class DataHandler extends AbstractHandler {
 		}
 	}
 
-	@SuppressWarnings("restriction")
 	private void handlePost(HttpExchange exchange, long jobId) throws IOException, IllegalStateException, JobNotFoundException {
 		LOGGER.info("Post method. {}", exchange.getRequestURI().getPath());
 
@@ -86,7 +86,6 @@ public class DataHandler extends AbstractHandler {
 		exchange.getResponseBody().write(message.getBytes());
 		LOGGER.info(message);
 	}
-
 	private void handleGet(HttpExchange exchange, long jobId, long entryId) throws IOException, JobNotFoundException, EntryNotFoundException {
 		LOGGER.info("Get method. {}", exchange.getRequestURI().getPath());
 

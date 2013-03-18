@@ -29,7 +29,6 @@ import java.io.RandomAccessFile;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.daemon.Daemon;
 import org.apache.commons.daemon.DaemonContext;
@@ -43,6 +42,7 @@ import pl.nask.hsn2.exceptions.JobNotFoundException;
 
 public final class DataStore implements Daemon {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStore.class);
+	private static final long filesPerDir = 500l;
 	private static final String DATA_STORE_PATH;
 	static {
 		try {
@@ -77,9 +77,9 @@ public final class DataStore implements Daemon {
 	}
 
 	public static long addData(InputStream inputStream, long jobId) throws IOException, JobNotFoundException {
-		File dir = getOrCreateJobDirectory(jobId);
 		long newId = updateIdCount();
-
+		File dir = getOrCreateJobDirectory(jobId,newId);
+		
 		File file = new File(dir, Long.toString(newId));
 		if (!file.exists()) {
 			try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
@@ -92,16 +92,19 @@ public final class DataStore implements Daemon {
 		return newId;
 	}
 
-	private static File getJobDirectory(long job) throws JobNotFoundException {
-		File dir = new File(DATA_PATH, Long.toString(job));
+	private static File getJobDirectory(long job,long ref) throws JobNotFoundException {
+		File dir = new File(DATA_PATH, getSubDirForRef(job,ref));
 		if (!dir.exists()) {
 			throw new JobNotFoundException("Job not found: " + dir);
 		}
 		return dir;
 	}
+	private static String getSubDirForRef(long job, long ref) {
+		return "" + job + File.separator + ( ref / filesPerDir );
+	}
 
-	private synchronized static File getOrCreateJobDirectory(long job) {
-		File dir = new File(DATA_PATH, Long.toString(job));
+	private synchronized static File getOrCreateJobDirectory(long job,long dataId) {
+		File dir = new File(DATA_PATH,getSubDirForRef(job, dataId));
 		if (!dir.exists() && !dir.mkdirs()) {
 			throw new IllegalStateException("Can not create directory: " + dir);
 		}
@@ -109,7 +112,7 @@ public final class DataStore implements Daemon {
 	}
 
 	public static File getFileForJob(long job, long ref) throws JobNotFoundException {
-		File dir = getJobDirectory(job);
+		File dir = getJobDirectory(job,ref);
 		return new File(dir, "" + ref);
 	}
 
@@ -168,6 +171,8 @@ public final class DataStore implements Daemon {
 	@Override
 	public void stop() {
 		server.close();
+		server = null;
+		
 	}
 
 	@Override
