@@ -38,7 +38,7 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 
 public class DataStorePerformanceTest {
-	private static final int HOW_MANY_FILES = 10;
+	private static final int HOW_MANY_FILES = 100000;
 	private static final long JOB_ID = 123456789;
 	private static final int THREADS_NUMBER = 10;
 	private static final int SMALL_FILE_SIZE = 10000000;
