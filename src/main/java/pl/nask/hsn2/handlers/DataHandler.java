@@ -40,7 +40,6 @@ import pl.nask.hsn2.exceptions.JobNotFoundException;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 
-@SuppressWarnings("restriction")
 public class DataHandler extends AbstractHandler {
 	private final Connection h2Connection;
 	private final ConcurrentSkipListSet<Long> activeJobsSet;
@@ -122,26 +121,28 @@ public class DataHandler extends AbstractHandler {
 		String tableName = "JOB_" + jobId;
 		DatabaseMetaData dbm = h2Connection.getMetaData();
 		// Check if table is there.
-		try (ResultSet tables = dbm.getTables(null, null, tableName, null)) {
-			boolean tableExists = tables.next();
-			if (!tableExists) {
-				// Table not exists.
-				try (Statement s = h2Connection.createStatement()) {
-					boolean resultCreateTable = s.execute("CREATE TABLE " + tableName + " (ID BIGINT, DATA IMAGE)");
-					if (resultCreateTable) {
-						// Should never happen.
-						LOGGER.debug("Create table, failed.");
-					} else {
-						resultCreateTable = s.execute("ALTER TABLE " + tableName + " ADD UNIQUE (ID)");
+		synchronized (h2Connection) {
+			try (ResultSet tables = dbm.getTables(null, null, tableName, null)) {
+				boolean tableExists = tables.next();
+				if (!tableExists) {
+					// Table not exists.
+					try (Statement s = h2Connection.createStatement()) {
+						boolean resultCreateTable = s.execute("CREATE TABLE " + tableName + " (ID BIGINT, DATA IMAGE)");
 						if (resultCreateTable) {
-							LOGGER.debug("Create table, done. Make ID unique, failed.");
+							// Should never happen.
+							LOGGER.debug("Create table, failed.");
 						} else {
-							LOGGER.debug("Create table, done. Make ID unique, done.");
+							resultCreateTable = s.execute("ALTER TABLE " + tableName + " ADD UNIQUE (ID)");
+							if (resultCreateTable) {
+								LOGGER.debug("Create table, done. Make ID unique, failed.");
+							} else {
+								LOGGER.debug("Create table, done. Make ID unique, done.");
+							}
 						}
 					}
+				} else {
+					LOGGER.debug("Create table, ignored. Table already exists.");
 				}
-			} else {
-				LOGGER.debug("Create table, ignored. Table already exists.");
 			}
 		}
 	}
