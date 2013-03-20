@@ -47,15 +47,15 @@ public class DataStorePerformanceTest {
 	private static final String RBT_NOTIFY_EXCH_NAME = "notify";
 	private static final String RBT_MAIN_EXCHANGE_NAME = "main";
 	private static final String DEFAULT_CONTENT_TYPE = "application/hsn2+protobuf";
-
 	private static final String TEST_TEXT = "This is long text. This is long text. This is long text. ";
 	private static final int TEST_TEXT_LENGTH = TEST_TEXT.length();
-	private static String STRING_FOR_DATA_STORE;
-	private static Path BIG_FILE;
-	private static Path SMALL_FILE;
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStorePerformanceTest.class);
-	private static MessageSerializer<Operation> DEFAULT_SERIALIZER;
-	private static ExecutorService EXECUTOR;
+
+	private static String stringForDataStore;
+	private static Path bigFile;
+	private static Path smallFile;
+	private static MessageSerializer<Operation> defaultSerializer;
+	private static ExecutorService executor;
 	private static long jobId;
 
 	private static void createTempFile(Path file, int fileSize) throws IOException {
@@ -72,8 +72,9 @@ public class DataStorePerformanceTest {
 		// Init.
 		CmdLineOpt cmdLineOpt = new CmdLineOpt(args);
 		prepareTempFiles(cmdLineOpt);
-		DEFAULT_SERIALIZER = new ProtoBufMessageSerializer();
-		EXECUTOR = Executors.newFixedThreadPool(cmdLineOpt.getThreadsNumber());
+		defaultSerializer = new ProtoBufMessageSerializer();
+		executor = Executors.newFixedThreadPool(cmdLineOpt.getThreadsNumber());
+		jobId = cmdLineOpt.getJobId();
 		CountDownLatch latch = new CountDownLatch(2 * cmdLineOpt.getHowManyFiles());
 		LOGGER.info(
 				"\nStarting with options:\n- files to test = {}\n- threads number = {}\n- job id = {}\n- big file size = {}\n"
@@ -88,7 +89,7 @@ public class DataStorePerformanceTest {
 		long time = System.currentTimeMillis();
 		for (int i = 0; i < cmdLineOpt.getHowManyFiles(); i++) {
 			// Submit add data task. (Which will run receive data task when finished.)
-			EXECUTOR.execute(new AddDataTask(nextAction, latch));
+			executor.execute(new AddDataTask(nextAction, latch));
 			filesCounter++;
 			if (filesCounter == nextAction.getFileLimit()) {
 				filesCounter = 0;
@@ -108,12 +109,12 @@ public class DataStorePerformanceTest {
 		LOGGER.info("Files created. Time = {} sec", time / 1000d);
 
 		// Run job cleaning task.
-		EXECUTOR.execute(new DeleteJobDataTask());
+		executor.execute(new DeleteJobDataTask());
 
 		// Cleaning.
-		Files.delete(SMALL_FILE);
-		Files.delete(BIG_FILE);
-		EXECUTOR.shutdown();
+		Files.delete(smallFile);
+		Files.delete(bigFile);
+		executor.shutdown();
 	}
 
 	private static void prepareTempFiles(CmdLineOpt cmdLnOpt) {
@@ -122,16 +123,16 @@ public class DataStorePerformanceTest {
 		for (int i = 0; i < 100; i++) {
 			sb.append(TEST_TEXT);
 		}
-		STRING_FOR_DATA_STORE = sb.toString();
+		stringForDataStore = sb.toString();
 
 		try {
 			// Prepare big file.
-			BIG_FILE = Files.createTempFile("hsn2-data-store-perfTest-", "");
-			createTempFile(BIG_FILE, cmdLnOpt.getBigFileSize());
+			bigFile = Files.createTempFile("hsn2-data-store-perfTest-", "");
+			createTempFile(bigFile, cmdLnOpt.getBigFileSize());
 
 			// Prepare small file.
-			SMALL_FILE = Files.createTempFile("hsn2-data-store-perfTest-", "");
-			createTempFile(SMALL_FILE, cmdLnOpt.getSmallFileSize());
+			smallFile = Files.createTempFile("hsn2-data-store-perfTest-", "");
+			createTempFile(smallFile, cmdLnOpt.getSmallFileSize());
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
@@ -193,29 +194,29 @@ public class DataStorePerformanceTest {
 				switch (actionToDo) {
 				case STRING:
 					LOGGER.debug("Adding string...");
-					dr = DS_CONN.sendPost(STRING_FOR_DATA_STORE.getBytes(), jobId);
+					dr = DS_CONN.sendPost(stringForDataStore.getBytes(), jobId);
 					key = dr.getRef().getKey();
 					type = dr.getType();
 					break;
 				case BIG_FILE:
 					LOGGER.debug("Adding big file...");
-					try (InputStream bigFile = new BufferedInputStream(new FileInputStream(BIG_FILE.toFile()))) {
-						dr = DS_CONN.sendPost(bigFile, jobId);
+					try (InputStream bigFileIs = new BufferedInputStream(new FileInputStream(bigFile.toFile()))) {
+						dr = DS_CONN.sendPost(bigFileIs, jobId);
 						key = dr.getRef().getKey();
 						type = dr.getType();
 					}
 					break;
 				case SMALL_FILE:
 					LOGGER.debug("Adding small file...");
-					try (InputStream smallFile = new BufferedInputStream(new FileInputStream(SMALL_FILE.toFile()))) {
-						dr = DS_CONN.sendPost(smallFile, jobId);
+					try (InputStream smallFileIs = new BufferedInputStream(new FileInputStream(smallFile.toFile()))) {
+						dr = DS_CONN.sendPost(smallFileIs, jobId);
 						key = dr.getRef().getKey();
 						type = dr.getType();
 					}
 					break;
 				}
-				LOGGER.info("Data added. Response(type={}, key={})", type, key);
-				EXECUTOR.execute(new GetDataTask(key, latch));
+				LOGGER.debug("Data added. Response(type={}, key={})", type, key);
+				executor.execute(new GetDataTask(key, latch));
 				latch.countDown();
 			} catch (IOException e) {
 				LOGGER.info("Could not complete SEND task (send string).", e);
@@ -244,7 +245,7 @@ public class DataStorePerformanceTest {
 						sb.append((char) chInt);
 						size++;
 					}
-					LOGGER.info("Data received. Stream size = {}", size);
+					LOGGER.debug("Data received. Stream size = {}", size);
 				}
 				latch.countDown();
 			} catch (IOException | ResourceException | StorageException e) {
@@ -281,7 +282,7 @@ public class DataStorePerformanceTest {
 		private void sendOut(Operation operation, Channel channel, Destination dest, String replyTo) throws IOException {
 			try {
 				// Prepare message.
-				Message message = DEFAULT_SERIALIZER.serialize(operation);
+				Message message = defaultSerializer.serialize(operation);
 				message.setDestination(dest);
 				message.setCorrelationId(null);
 				message.setReplyTo(new RbtDestination(RBT_MAIN_EXCHANGE_NAME, replyTo));
