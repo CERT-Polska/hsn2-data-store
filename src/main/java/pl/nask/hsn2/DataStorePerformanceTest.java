@@ -42,10 +42,6 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 
 public class DataStorePerformanceTest {
-	private static final DataStoreConnector DS_CONN = new DataStoreConnectorImpl("http://127.0.0.1:8080/");
-	private static final String RBT_HOST_NAME = "localhost";
-	private static final String RBT_NOTIFY_EXCH_NAME = "notify";
-	private static final String RBT_MAIN_EXCHANGE_NAME = "main";
 	private static final String DEFAULT_CONTENT_TYPE = "application/hsn2+protobuf";
 	private static final String TEST_TEXT = "This is long text. This is long text. This is long text. ";
 	private static final int TEST_TEXT_LENGTH = TEST_TEXT.length();
@@ -57,6 +53,10 @@ public class DataStorePerformanceTest {
 	private static MessageSerializer<Operation> defaultSerializer;
 	private static ExecutorService executor;
 	private static long jobId;
+	private static DataStoreConnector dsConnector;
+	private static String rbtHostName;
+	private static String rbtNotifyExchName;
+	private static String rbtMainExchName;
 
 	private static void createTempFile(Path file, int fileSize) throws IOException {
 		try (BufferedWriter bw = new BufferedWriter(new FileWriter(file.toFile()))) {
@@ -72,18 +72,18 @@ public class DataStorePerformanceTest {
 		// Init.
 		CmdLineOpt cmdLineOpt = new CmdLineOpt(args);
 		prepareTempFiles(cmdLineOpt);
-		defaultSerializer = new ProtoBufMessageSerializer();
-		executor = Executors.newFixedThreadPool(cmdLineOpt.getThreadsNumber());
-		jobId = cmdLineOpt.getJobId();
-		CountDownLatch latch = new CountDownLatch(2 * cmdLineOpt.getHowManyFiles());
+		prepareStaticVariables(cmdLineOpt);
 		LOGGER.info(
-				"\nStarting with options:\n- files to test = {}\n- threads number = {}\n- job id = {}\n- big file size = {}\n"
-						+ "- small file size = {}\n- strings per iteration = {}\n- small files per iteration = {}\n- big files per iteration = {}\n",
-				new Object[] { cmdLineOpt.getHowManyFiles(), cmdLineOpt.getThreadsNumber(), cmdLineOpt.getJobId(),
-						cmdLineOpt.getBigFileSize(), cmdLineOpt.getSmallFileSize(), cmdLineOpt.getStringFilesLimit(),
-						cmdLineOpt.getSmallFilesLimit(), cmdLineOpt.getBigFilesLimit() });
+				"\nStarting with options:\n- files to test = {}\n- threads number = {}\n- job id = {}\n- big file"
+						+ " size = {}\n- small file size = {}\n- strings per iteration = {}\n- small files per iteration = {}"
+						+ "\n- big files per iteration = {}\n- rabbitmq host = {}\n- rabbitmq main exch = {}\n- rabbitmq notify"
+						+ " exch = {}\n- data store url = {}\n",
+				new Object[] { cmdLineOpt.getHowManyFiles(), cmdLineOpt.getThreadsNumber(), jobId, cmdLineOpt.getBigFileSize(),
+						cmdLineOpt.getSmallFileSize(), cmdLineOpt.getStringFilesLimit(), cmdLineOpt.getSmallFilesLimit(),
+						cmdLineOpt.getBigFilesLimit(), rbtHostName, rbtMainExchName, rbtNotifyExchName, cmdLineOpt.getDsUrl() });
 
 		// Submit all tasks.
+		CountDownLatch latch = new CountDownLatch(2 * cmdLineOpt.getHowManyFiles());
 		ActionType nextAction = ActionType.STRING;
 		int filesCounter = 0;
 		long time = System.currentTimeMillis();
@@ -115,6 +115,16 @@ public class DataStorePerformanceTest {
 		Files.delete(smallFile);
 		Files.delete(bigFile);
 		executor.shutdown();
+	}
+
+	private static void prepareStaticVariables(CmdLineOpt cmdLineOpt) {
+		defaultSerializer = new ProtoBufMessageSerializer();
+		executor = Executors.newFixedThreadPool(cmdLineOpt.getThreadsNumber());
+		jobId = cmdLineOpt.getJobId();
+		dsConnector = new DataStoreConnectorImpl(cmdLineOpt.getDsUrl());
+		rbtHostName = cmdLineOpt.getRbtHost();
+		rbtMainExchName = cmdLineOpt.getRbtMainExch();
+		rbtNotifyExchName = cmdLineOpt.getRbtNotifyExch();
 	}
 
 	private static void prepareTempFiles(CmdLineOpt cmdLnOpt) {
@@ -194,14 +204,14 @@ public class DataStorePerformanceTest {
 				switch (actionToDo) {
 				case STRING:
 					LOGGER.debug("Adding string...");
-					dr = DS_CONN.sendPost(stringForDataStore.getBytes(), jobId);
+					dr = dsConnector.sendPost(stringForDataStore.getBytes(), jobId);
 					key = dr.getRef().getKey();
 					type = dr.getType();
 					break;
 				case BIG_FILE:
 					LOGGER.debug("Adding big file...");
 					try (InputStream bigFileIs = new BufferedInputStream(new FileInputStream(bigFile.toFile()))) {
-						dr = DS_CONN.sendPost(bigFileIs, jobId);
+						dr = dsConnector.sendPost(bigFileIs, jobId);
 						key = dr.getRef().getKey();
 						type = dr.getType();
 					}
@@ -209,7 +219,7 @@ public class DataStorePerformanceTest {
 				case SMALL_FILE:
 					LOGGER.debug("Adding small file...");
 					try (InputStream smallFileIs = new BufferedInputStream(new FileInputStream(smallFile.toFile()))) {
-						dr = DS_CONN.sendPost(smallFileIs, jobId);
+						dr = dsConnector.sendPost(smallFileIs, jobId);
 						key = dr.getRef().getKey();
 						type = dr.getType();
 					}
@@ -237,7 +247,7 @@ public class DataStorePerformanceTest {
 		@Override
 		public void run() {
 			try {
-				try (BufferedInputStream bis = new BufferedInputStream(DS_CONN.getResourceAsStream(jobId, referenceId))) {
+				try (BufferedInputStream bis = new BufferedInputStream(dsConnector.getResourceAsStream(jobId, referenceId))) {
 					StringBuilder sb = new StringBuilder();
 					int chInt;
 					int size = 0;
@@ -269,12 +279,12 @@ public class DataStorePerformanceTest {
 		private void iniRabbitMqAndSendJobFinished() throws IOException {
 			Connection rbtConnection;
 			ConnectionFactory connFactory = new ConnectionFactory();
-			connFactory.setHost(RBT_HOST_NAME);
+			connFactory.setHost(rbtHostName);
 			rbtConnection = connFactory.newConnection();
 			Channel channel = rbtConnection.createChannel();
-			channel.exchangeDeclare(RBT_NOTIFY_EXCH_NAME, "fanout");
+			channel.exchangeDeclare(rbtNotifyExchName, "fanout");
 			Operation jobFinishedOperation = new JobFinished(jobId, JobStatus.COMPLETED);
-			Destination dst = new RbtDestination(RBT_MAIN_EXCHANGE_NAME, "");
+			Destination dst = new RbtDestination(rbtMainExchName, "");
 			sendOut(jobFinishedOperation, channel, dst, "");
 			rbtConnection.close();
 		}
@@ -285,7 +295,7 @@ public class DataStorePerformanceTest {
 				Message message = defaultSerializer.serialize(operation);
 				message.setDestination(dest);
 				message.setCorrelationId(null);
-				message.setReplyTo(new RbtDestination(RBT_MAIN_EXCHANGE_NAME, replyTo));
+				message.setReplyTo(new RbtDestination(rbtMainExchName, replyTo));
 
 				// Properties below uses only service name (String, not Destination) as replyTo parameter.
 				String replyToQueueName = message.getReplyTo().getService();
@@ -319,6 +329,10 @@ public class DataStorePerformanceTest {
 		private static final String STRING_FILES_LIMIT_DEFAULT = "200";
 		private static final String SMALL_FILES_LIMIT_DEFAULT = "10";
 		private static final String BIG_FILES_LIMIT_DEFAULT = "1";
+		private static final String DS_URL_DEFAULT = "http://127.0.0.1:8080/";
+		private static final String RABBITMQ_HOST_DEFAULT = "localhost";
+		private static final String RABBITMQ_NOTIFY_EXCH_DEFAULT = "notify";
+		private static final String RABBITMQ_MAIN_EXCH_DEFAULT = "main";
 
 		private int howManyFiles;
 		private long jobId;
@@ -328,6 +342,10 @@ public class DataStorePerformanceTest {
 		private int stringFilesLimit;
 		private int smallFilesLimit;
 		private int bigFilesLimit;
+		private String dsUrl;
+		private String rbtHost;
+		private String rbtNotifyExch;
+		private String rbtMainExch;
 
 		public CmdLineOpt(String[] args) throws ParseException {
 			initOptions();
@@ -387,6 +405,30 @@ public class DataStorePerformanceTest {
 			OptionBuilder.hasArgs(1);
 			OptionBuilder.withArgName("number");
 			options.addOption(OptionBuilder.create("bfpi"));
+
+			OptionBuilder.withDescription("RabbitMQ notify exchange. (Default: " + RABBITMQ_NOTIFY_EXCH_DEFAULT + ")");
+			OptionBuilder.withLongOpt("rbtNtfExch");
+			OptionBuilder.hasArgs(1);
+			OptionBuilder.withArgName("number");
+			options.addOption(OptionBuilder.create("rne"));
+
+			OptionBuilder.withDescription("RabbitMQ main exchange. (Default: " + RABBITMQ_MAIN_EXCH_DEFAULT + ")");
+			OptionBuilder.withLongOpt("rbtMainExch");
+			OptionBuilder.hasArgs(1);
+			OptionBuilder.withArgName("number");
+			options.addOption(OptionBuilder.create("rme"));
+
+			OptionBuilder.withDescription("RabbitMQ host name. (Default: " + RABBITMQ_HOST_DEFAULT + ")");
+			OptionBuilder.withLongOpt("rbtHost");
+			OptionBuilder.hasArgs(1);
+			OptionBuilder.withArgName("number");
+			options.addOption(OptionBuilder.create("rh"));
+
+			OptionBuilder.withDescription("Data store URL. (Default: " + DS_URL_DEFAULT + ")");
+			OptionBuilder.withLongOpt("dsUrl");
+			OptionBuilder.hasArgs(1);
+			OptionBuilder.withArgName("number");
+			options.addOption(OptionBuilder.create("du"));
 		}
 
 		private void parseCmdLineArgs(String[] args) throws ParseException {
@@ -408,6 +450,10 @@ public class DataStorePerformanceTest {
 				stringFilesLimit = Integer.valueOf(cmd.getOptionValue("spi", STRING_FILES_LIMIT_DEFAULT));
 				smallFilesLimit = Integer.valueOf(cmd.getOptionValue("sfpi", SMALL_FILES_LIMIT_DEFAULT));
 				bigFilesLimit = Integer.valueOf(cmd.getOptionValue("bfpi", BIG_FILES_LIMIT_DEFAULT));
+				rbtHost = cmd.getOptionValue("rh", RABBITMQ_HOST_DEFAULT);
+				rbtNotifyExch = cmd.getOptionValue("rne", RABBITMQ_NOTIFY_EXCH_DEFAULT);
+				rbtMainExch = cmd.getOptionValue("rme", RABBITMQ_MAIN_EXCH_DEFAULT);
+				dsUrl = cmd.getOptionValue("du", DS_URL_DEFAULT);
 			}
 		}
 
@@ -443,5 +489,20 @@ public class DataStorePerformanceTest {
 			return bigFilesLimit;
 		}
 
+		public String getDsUrl() {
+			return dsUrl;
+		}
+
+		public String getRbtHost() {
+			return rbtHost;
+		}
+
+		public String getRbtNotifyExch() {
+			return rbtNotifyExch;
+		}
+
+		public String getRbtMainExch() {
+			return rbtMainExch;
+		}
 	}
 }
