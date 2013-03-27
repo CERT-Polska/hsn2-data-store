@@ -19,9 +19,9 @@
 
 package pl.nask.hsn2;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 import org.slf4j.Logger;
@@ -32,13 +32,8 @@ public class DataStoreCleanSingleJob implements Runnable {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreCleanSingleJob.class);
 	private final ConcurrentSkipListSet<Long> currentlyCleaningJobs;
 	private final long jobId;
-	private final Connection h2Connection;
-	private final ConcurrentSkipListSet<Long> activeJobs;
 
-	public DataStoreCleanSingleJob(ConcurrentSkipListSet<Long> actualCleaningJobsList, long jobIdToClean, Connection h2dbConnection,
-			ConcurrentSkipListSet<Long> activeJobsSet) {
-		activeJobs = activeJobsSet;
-		h2Connection = h2dbConnection;
+	public DataStoreCleanSingleJob(ConcurrentSkipListSet<Long> actualCleaningJobsList, long jobIdToClean) {
 		currentlyCleaningJobs = actualCleaningJobsList;
 		jobId = jobIdToClean;
 		currentlyCleaningJobs.add(jobId);
@@ -51,25 +46,24 @@ public class DataStoreCleanSingleJob implements Runnable {
 		long time = System.currentTimeMillis();
 
 		// Clean.
-		try {
-			dropJobTable();
-		} catch (SQLException e) {
-			LOGGER.error("Drop database, failed.", e);
-		}
+		removeJobData();
 
 		// Task ended. Remove job from actual cleaning jobs list.
 		currentlyCleaningJobs.remove(jobId);
-		activeJobs.remove(jobId);
 
 		time = System.currentTimeMillis() - time;
 		LOGGER.info("Single cleaner task finished. (job={}, time[sec]={})", jobId, time / ONE_MIN_IN_MS);
 	}
 
-	private void dropJobTable() throws SQLException {
-		String sqlQuery = "DROP TABLE JOB_" + jobId;
-		try (PreparedStatement statement = h2Connection.prepareStatement(sqlQuery)) {
-			statement.execute();
-			LOGGER.info("Table delete - done.");
+	/**
+	 * Removes database file. (Every job has its own database file.)
+	 */
+	private void removeJobData() {
+		try {
+			Files.delete(new File(DataStore.getDbFileName(jobId) + ".h2.db").toPath());
+		} catch (IOException e) {
+			LOGGER.warn("Could not delete H2 Database file. (" + DataStore.getDbFileName(jobId) + ".h2.db)", e);
+			// data-store-123456789.h2.db
 		}
 	}
 }

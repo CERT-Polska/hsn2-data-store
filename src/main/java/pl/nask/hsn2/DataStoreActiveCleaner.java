@@ -20,6 +20,8 @@
 package pl.nask.hsn2;
 
 import java.io.IOException;
+import java.sql.SQLException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -63,14 +65,7 @@ public class DataStoreActiveCleaner implements Runnable {
 	 * RabbitMQ connection.
 	 */
 	private Connection rbtConnection;
-	/**
-	 * Set containing active jobs ids. Active job is ongoing job, which means that there is already job table
-	 * initialized in H2 Database. JobId should be removed from set upon job finish message (or reminder message).
-	 */
-	private final ConcurrentSkipListSet<Long> activeJobsSet;
-	private final java.sql.Connection h2Connection;
-	
-	// WST make sure that job is removed from set above after it's finished
+	private final ConcurrentHashMap<Long, java.sql.Connection> h2Connections;
 
 	/**
 	 * Creates new active cleaner.
@@ -83,17 +78,16 @@ public class DataStoreActiveCleaner implements Runnable {
 	 *            Leave job option, in order to filter out jobs to clean using their completion status.
 	 * @param cleaningThreadsNumber
 	 *            Number of thread pool of single job cleaner.
-	 * @param h2Connector 
-	 * @param activeJobsSet 
+	 * @param h2Connector
+	 * @param activeJobsSet
 	 */
 	public DataStoreActiveCleaner(String rbtServerHostname, String rbtNotifyExchangeName, LeaveJobOption leaveJobValue,
-			int cleaningThreadsNumber, ConcurrentSkipListSet<Long> activeJobs, java.sql.Connection h2dbConnector) {
-		h2Connection = h2dbConnector;
+			int cleaningThreadsNumber, ConcurrentHashMap<Long, java.sql.Connection> h2ConnectionsPool) {
+		h2Connections = h2ConnectionsPool;
 		rbtHostName = rbtServerHostname;
 		rbtNotifyExchName = rbtNotifyExchangeName;
 		leaveJob = leaveJobValue;
 		executor = Executors.newFixedThreadPool(cleaningThreadsNumber);
-		activeJobsSet = activeJobs;
 		LOGGER.info("Active cleaner initialized. (leaveJob={}, rbtHost={}, rbtNotifyExch={}, threads={})", new Object[] { leaveJob,
 				rbtHostName, rbtNotifyExchName, cleaningThreadsNumber });
 	}
@@ -129,7 +123,7 @@ public class DataStoreActiveCleaner implements Runnable {
 				LOGGER.debug("Got delivery {}", type);
 
 				// Clean if job finished data.
-				try{
+				try {
 					if ("JobFinished".equals(type)) {
 						JobFinished jobFinishedData = JobFinished.parseFrom(delivery.getBody());
 						startJobDataRemoving(jobFinishedData.getJob(), jobFinishedData.getStatus());
@@ -137,8 +131,7 @@ public class DataStoreActiveCleaner implements Runnable {
 						JobFinishedReminder jobFinishedData = JobFinishedReminder.parseFrom(delivery.getBody());
 						startJobDataRemoving(jobFinishedData.getJob(), jobFinishedData.getStatus());
 					}
-				}
-				catch(InvalidProtocolBufferException e){
+				} catch (InvalidProtocolBufferException e) {
 					LOGGER.warn("Invalid message! Expected: " + type, e);
 				}
 			}
@@ -166,16 +159,22 @@ public class DataStoreActiveCleaner implements Runnable {
 		if (actualCleaningJobs.contains(jobId)) {
 			LOGGER.info("Job data clean request ignored. Already cleaning. (jobId={})", jobId);
 		} else {
-			if (activeJobsSet.contains(jobId)) {
-				if (isJobStatusEligibleToClean(jobStatus)) {
-					LOGGER.info("Job data clean request added. (jobId={})", jobId);
-					executor.execute(new DataStoreCleanSingleJob(actualCleaningJobs, jobId, h2Connection, activeJobsSet));
-				} else {
-					LOGGER.info("Job data clean request ignored. Job status not eligible. (jobId={}, status={})", jobId,
-							jobStatus.toString());
-				}
-			} else {
+			java.sql.Connection c = h2Connections.remove(jobId);
+			if (c == null) {
 				LOGGER.info("Job data clean request ignored. Job id not found in active jobs set. (jobId={})", jobId);
+			} else {
+				try {
+					c.close();
+					if (isJobStatusEligibleToClean(jobStatus)) {
+						LOGGER.info("Job data clean request added. (jobId={})", jobId);
+						executor.execute(new DataStoreCleanSingleJob(actualCleaningJobs, jobId));
+					} else {
+						LOGGER.info("Job data clean request ignored. Job status not eligible. (jobId={}, status={})", jobId,
+								jobStatus.toString());
+					}
+				} catch (SQLException e) {
+					LOGGER.warn("Could not close H2 Database connection.", e);
+				}
 			}
 		}
 	}

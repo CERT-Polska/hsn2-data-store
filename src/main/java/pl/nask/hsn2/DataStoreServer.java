@@ -23,7 +23,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
@@ -38,10 +39,10 @@ import com.sun.net.httpserver.HttpServer;
 public class DataStoreServer {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreServer.class);
 	private HttpServer server;
-	private final Connection h2Connection;
+	private final ConcurrentHashMap<Long, Connection> h2Connections;
 
-	public DataStoreServer(int port, ConcurrentSkipListSet<Long> activeJobs, Connection h2dbConnection) throws ClassNotFoundException, SQLException {
-		h2Connection = h2dbConnection;
+	public DataStoreServer(int port, ConcurrentHashMap<Long, Connection> h2ConnectionsPool) throws ClassNotFoundException, SQLException {
+		h2Connections = h2ConnectionsPool;
 		InetSocketAddress addr = new InetSocketAddress(port);
 		try {
 			server = HttpServer.create(addr, 0);
@@ -49,7 +50,7 @@ public class DataStoreServer {
 			throw new RuntimeException("Server error.", e);
 		}
 		server.createContext("/", new DefaultHandler());
-		server.createContext("/data", new DataHandler(h2Connection, activeJobs));
+		server.createContext("/data", new DataHandler(h2ConnectionsPool));
 		server.setExecutor(Executors.newCachedThreadPool());
 		LOGGER.info("Server is listening on port {}", port);
 	}
@@ -59,7 +60,9 @@ public class DataStoreServer {
 	}
 
 	public void close() throws SQLException {
-		h2Connection.close();
+		for (Entry<Long, Connection> connection : h2Connections.entrySet()) {
+			connection.getValue().close();
+		}
 		server.stop(0);
 		LOGGER.info("Server is stopped!");
 	}

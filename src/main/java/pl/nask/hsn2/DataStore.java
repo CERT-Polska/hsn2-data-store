@@ -28,9 +28,8 @@ import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.daemon.Daemon;
@@ -39,8 +38,6 @@ import org.apache.commons.daemon.DaemonController;
 import org.apache.commons.daemon.DaemonInitException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import pl.nask.hsn2.exceptions.JobNotFoundException;
 
 public final class DataStore implements Daemon {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStore.class);
@@ -55,7 +52,7 @@ public final class DataStore implements Daemon {
 			throw new IllegalArgumentException("Can't parse URL", e);
 		}
 	}
-	public static final String DATA_PATH = DATA_STORE_PATH + "data";
+	private static final String DATA_PATH = DATA_STORE_PATH + "data";
 	private static final String SEQ_PATH = DATA_STORE_PATH + "dataId.seq";
 
 	private static long idCount;
@@ -75,20 +72,6 @@ public final class DataStore implements Daemon {
 			}
 		});
 		ds.start();
-	}
-
-
-	private static File getJobDirectory(long job) throws JobNotFoundException {
-		File dir = new File(DATA_PATH, Long.toString(job));
-		if (!dir.exists()) {
-			throw new JobNotFoundException("Job not found: " + dir);
-		}
-		return dir;
-	}
-
-	public static File getFileForJob(long job, long ref) throws JobNotFoundException {
-		File dir = getJobDirectory(job);
-		return new File(dir, "" + ref);
 	}
 
 	private static void setIdFromConf() {
@@ -114,8 +97,6 @@ public final class DataStore implements Daemon {
 		return DATA_PATH;
 	}
 
-	private ConcurrentSkipListSet<Long> activeJobsSet = new ConcurrentSkipListSet<>();
-	
 	@Override
 	public void init(DaemonContext context) throws DaemonInitException {
 		DataStoreCmdLineOptions opt = null;
@@ -129,17 +110,20 @@ public final class DataStore implements Daemon {
 		// Initialize H2 database.
 		try {
 			Class.forName("org.h2.Driver");
-			Connection h2Connector = DriverManager.getConnection("jdbc:h2:" + DataStore.DATA_PATH + File.separator + "test-h2db", "sa", "");
+			ConcurrentHashMap<Long, Connection> h2ConnectionsPool = new ConcurrentHashMap<>();
+			
+			
 			
 			// If help is printed we don't want to start server, only terminate app.
-			if (opt.getRbtHostname() != null) {
+			String rbtHostName = opt.getRbtHostname();
+			if (rbtHostName != null) {
 				// Start server.
 				setIdFromConf();
-				server = new DataStoreServer(opt.getPort(), activeJobsSet, h2Connector);
+				server = new DataStoreServer(opt.getPort(), h2ConnectionsPool);
 
 				// Start job data cleaner. (Not thread safe. Only one cleaner should be active all the time.)
-				new Thread(new DataStoreActiveCleaner(opt.getRbtHostname(), opt.getRbtNotifyExch(), opt.getLeaveData(),
-						opt.getCleaningThreadsNumber(), activeJobsSet, h2Connector)).start();
+				new Thread(new DataStoreActiveCleaner(rbtHostName, opt.getRbtNotifyExch(), opt.getLeaveData(),
+						opt.getCleaningThreadsNumber(), h2ConnectionsPool)).start();
 			}
 		} catch (SQLException|ClassNotFoundException e1) {
 			throw new DaemonInitException("H2 database initialization, failed.");
@@ -165,5 +149,9 @@ public final class DataStore implements Daemon {
 	@Override
 	public void destroy() {
 		// Nothing to do.
+	}
+	
+	public static String getDbFileName(long jobId) {
+		return DataStore.DATA_PATH + File.separator + "data-store-" + jobId;
 	}
 }

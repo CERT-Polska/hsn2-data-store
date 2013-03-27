@@ -24,12 +24,12 @@ import java.io.InputStream;
 import java.net.URI;
 import java.sql.Blob;
 import java.sql.Connection;
-import java.sql.DatabaseMetaData;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.commons.io.IOUtils;
 
@@ -40,13 +40,15 @@ import pl.nask.hsn2.exceptions.JobNotFoundException;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 
+@SuppressWarnings("restriction")
 public class DataHandler extends AbstractHandler {
-	private final Connection h2Connection;
-	private final ConcurrentSkipListSet<Long> activeJobsSet;
+	/**
+	 * Maps jobId to h2Connector.
+	 */
+	private final ConcurrentHashMap<Long, Connection> h2Connections;
 
-	public DataHandler(Connection h2dbConnection, ConcurrentSkipListSet<Long> activeJobs) {
-		h2Connection = h2dbConnection;
-		activeJobsSet = activeJobs;
+	public DataHandler(ConcurrentHashMap<Long, Connection> h2ConnectionsPool) {
+		h2Connections = h2ConnectionsPool;
 	}
 
 	@Override
@@ -97,14 +99,17 @@ public class DataHandler extends AbstractHandler {
 	private long addData(InputStream inputStream, long jobId) throws IOException, SQLException {
 		long newId = DataStore.updateIdCount();
 
-		// Check if job's table exists.
-		if (!activeJobsSet.contains(jobId)) {
-			createTableIfNotExists(jobId);
-			activeJobsSet.add(jobId);
+		// Check if job's h2 connection exists.
+		Connection h2Connection;
+		synchronized (h2Connections) {
+			h2Connection = h2Connections.get(jobId);
+			if (h2Connection == null) {
+				h2Connection = createNewDatabase(jobId);
+			}
 		}
 
 		// Add data to database.
-		String sqlQuery = "INSERT INTO JOB_" + jobId + " VALUES(?, ?)";
+		String sqlQuery = "INSERT INTO JOB_DATA VALUES(?, ?)";
 		try (PreparedStatement statement = h2Connection.prepareStatement(sqlQuery)) {
 			statement.setLong(1, newId);
 			statement.setBlob(2, inputStream);
@@ -117,48 +122,43 @@ public class DataHandler extends AbstractHandler {
 		return newId;
 	}
 
-	private void createTableIfNotExists(long jobId) throws SQLException {
-		String tableName = "JOB_" + jobId;
-		DatabaseMetaData dbm = h2Connection.getMetaData();
-		// Check if table is there.
-		synchronized (h2Connection) {
-			try (ResultSet tables = dbm.getTables(null, null, tableName, null)) {
-				boolean tableExists = tables.next();
-				if (!tableExists) {
-					// Table not exists.
-					try (Statement s = h2Connection.createStatement()) {
-						boolean resultCreateTable = s.execute("CREATE TABLE " + tableName + " (ID BIGINT, DATA IMAGE)");
-						if (resultCreateTable) {
-							// Should never happen.
-							LOGGER.debug("Create table, failed.");
-						} else {
-							resultCreateTable = s.execute("ALTER TABLE " + tableName + " ADD UNIQUE (ID)");
-							if (resultCreateTable) {
-								LOGGER.debug("Create table, done. Make ID unique, failed.");
-							} else {
-								LOGGER.debug("Create table, done. Make ID unique, done.");
-							}
-						}
-					}
+	private Connection createNewDatabase(long jobId) throws SQLException {
+		// Create new database.
+		Connection h2Connection = DriverManager.getConnection("jdbc:h2:" + DataStore.getDbFileName(jobId), "sa", "");
+		h2Connection.setAutoCommit(true);
+		h2Connections.put(jobId, h2Connection);
+		// Create new table.
+		try (Statement s = h2Connection.createStatement()) {
+			s.execute("SET MAX_LOG_SIZE 200");
+			boolean resultCreateTable = s.execute("CREATE TABLE JOB_DATA (ID BIGINT, DATA IMAGE)");
+			if (resultCreateTable) {
+				// Should never happen.
+				LOGGER.debug("Create table, failed. (db={})", DataStore.getDbFileName(jobId));
+			} else {
+				resultCreateTable = s.execute("ALTER TABLE JOB_DATA ADD UNIQUE (ID)");
+				if (resultCreateTable) {
+					LOGGER.debug("Create table, done. Make ID unique, failed.");
 				} else {
-					LOGGER.debug("Create table, ignored. Table already exists.");
+					LOGGER.debug("Create table, done. Make ID unique, done.");
 				}
 			}
 		}
+
+		return h2Connection;
 	}
 
 	private void handleGet(HttpExchange exchange, long jobId, long entryId) throws IOException, JobNotFoundException,
 			EntryNotFoundException, SQLException {
 		LOGGER.info("Get method. {}", exchange.getRequestURI().getPath());
-
 		try (InputStream is = getData(jobId, entryId)) {
 			Headers headers = exchange.getResponseHeaders();
 			headers.set("Content-Type", "application/octet-stream");
-			// WST poprawic size
+
+			// Size 0 means: unknown.
 			int size = 0;
+
 			exchange.sendResponseHeaders(200, size);
 			IOUtils.copyLarge(is, exchange.getResponseBody());
-
 		}
 	}
 
@@ -173,10 +173,19 @@ public class DataHandler extends AbstractHandler {
 	 * @return Input stream representing requested data.
 	 * @throws SQLException
 	 *             When nothing has been found or other SQL issue appears.
+	 * @throws JobNotFoundException
+	 *             When there's request for data for job that does not have h2 connection created (means no job data
+	 *             exists).
 	 */
-	private InputStream getData(long jobId, long entryId) throws SQLException {
+	private InputStream getData(long jobId, long entryId) throws SQLException, JobNotFoundException {
+		// Check if job's h2 connection exists.
+		Connection h2Connection = h2Connections.get(jobId);
+		if (h2Connection == null) {
+			throw new JobNotFoundException("Job not found (id=" + jobId + ")");
+		}
+
 		Blob data = null;
-		try (PreparedStatement statement = h2Connection.prepareStatement("SELECT DATA FROM JOB_" + jobId + " WHERE ID=?")) {
+		try (PreparedStatement statement = h2Connection.prepareStatement("SELECT DATA FROM JOB_DATA WHERE ID=?")) {
 			statement.setLong(1, entryId);
 			ResultSet result = statement.executeQuery();
 			if (result.next()) {
