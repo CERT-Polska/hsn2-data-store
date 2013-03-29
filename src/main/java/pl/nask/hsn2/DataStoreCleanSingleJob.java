@@ -61,9 +61,10 @@ public class DataStoreCleanSingleJob implements Runnable {
 	private void removeJobData() {
 		try {
 			Files.delete(new File(DataStore.getDbFileName(jobId) + ".h2.db").toPath());
+			Files.deleteIfExists(new File(DataStore.getDbFileName(jobId) + ".lock.db").toPath());
+			Files.deleteIfExists(new File(DataStore.getDbFileName(jobId) + ".trace.db").toPath());
 		} catch (IOException e) {
 			LOGGER.warn("Could not delete H2 Database file. (" + DataStore.getDbFileName(jobId) + ".h2.db)", e);
-			// data-store-123456789.h2.db
 		}
 	}
 }

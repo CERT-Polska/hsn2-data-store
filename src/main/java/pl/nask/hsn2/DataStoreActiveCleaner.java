@@ -137,7 +137,6 @@ public class DataStoreActiveCleaner implements Runnable {
 			}
 		} catch (ShutdownSignalException e) {
 			LOGGER.warn("Shutdown signal received.", e);
-			System.exit(5);
 		} catch (ConsumerCancelledException e) {
 			LOGGER.info("Cancell signal received.", e);
 		} catch (InterruptedException e) {

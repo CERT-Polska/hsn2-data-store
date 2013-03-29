@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
 
+import org.apache.commons.httpclient.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +31,7 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
+@SuppressWarnings("restriction")
 public abstract class AbstractHandler implements HttpHandler {
 
 	protected static final Logger LOGGER = LoggerFactory.getLogger(HttpHandler.class);
@@ -39,23 +41,21 @@ public abstract class AbstractHandler implements HttpHandler {
 		Headers headers = exchange.getResponseHeaders();
 		headers.set("Content-Type", "text/plain");
 		headers.set("Server", "HSN2-DataStore");
-		
+
 		URI uri = exchange.getRequestURI();
 		String requestMethod = exchange.getRequestMethod();
-		
-		try{
+
+		try {
 			handleRequest(exchange, uri, requestMethod);
-		} 
-		catch (Exception e) {
-			handleError(exchange, 500, e);
-		}
-		finally{
+		} catch (Exception e) {
+			handleError(exchange, HttpStatus.SC_INTERNAL_SERVER_ERROR, e);
+		} finally {
 			OutputStream responseBody = exchange.getResponseBody();
-			if(responseBody != null){
+			if (responseBody != null) {
 				try {
 					responseBody.close();
 				} catch (IOException e) {
-					LOGGER.error(e.getMessage(),e);
+					LOGGER.error(e.getMessage(), e);
 				}
 			}
 		}
@@ -67,13 +67,13 @@ public abstract class AbstractHandler implements HttpHandler {
 			exchange.sendResponseHeaders(httpCode, msg.length());
 			exchange.getResponseBody().write(msg.getBytes());
 		} catch (IOException e1) {
-			LOGGER.error(e1.getMessage(),e1);
+			LOGGER.error(e1.getMessage(), e1);
 		}
 	}
 
 	protected void handleError(HttpExchange exchange, int httpCode, Exception e) {
 		handleError(exchange, httpCode, e.getMessage(), e);
 	}
-	
+
 	protected abstract void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException;
 }

@@ -83,7 +83,7 @@ public final class DataStore implements Daemon {
 		}
 	}
 
-	public synchronized static long updateIdCount() throws IOException {
+	public static synchronized long updateIdCount() throws IOException {
 		long oldId = idCount++;
 		try (RandomAccessFile rr = new RandomAccessFile(SEQ_PATH, "rw")) {
 			try (FileChannel fileChannel = rr.getChannel()) {

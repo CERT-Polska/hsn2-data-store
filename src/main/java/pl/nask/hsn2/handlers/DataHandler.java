@@ -31,6 +31,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
 
 import pl.nask.hsn2.DataStore;
@@ -42,6 +43,9 @@ import com.sun.net.httpserver.HttpExchange;
 
 @SuppressWarnings("restriction")
 public class DataHandler extends AbstractHandler {
+	private static final String H2_DB_PASSWORD = "hsn2";
+	private static final int ARGS_NUMBER_FOR_POST = 2;
+	private static final int ARGS_NUMBER_FOR_GET = 3;
 	/**
 	 * Maps jobId to h2Connector.
 	 */
@@ -56,13 +60,13 @@ public class DataHandler extends AbstractHandler {
 		String[] args = exchange.getRequestURI().getPath().split("/");
 		try {
 			if ("GET".equalsIgnoreCase(requestMethod)) {
-				if (args.length > 3) {
-					handleGet(exchange, Long.parseLong(args[2]), Long.parseLong(args[3]));
+				if (args.length > ARGS_NUMBER_FOR_GET) {
+					handleGet(exchange, Long.parseLong(args[2]), Long.parseLong(args[ARGS_NUMBER_FOR_GET]));
 				} else {
 					throw new JobNotFoundException("Job or entry id not found.");
 				}
 			} else if ("POST".equalsIgnoreCase(requestMethod)) {
-				if (args.length > 2) {
+				if (args.length > ARGS_NUMBER_FOR_POST) {
 					handlePost(exchange, Long.parseLong(args[2]));
 				} else {
 					throw new JobNotFoundException("Job not found.");
@@ -71,18 +75,17 @@ public class DataHandler extends AbstractHandler {
 				throw new UnsupportedOperationException("Unsupported method: " + requestMethod);
 			}
 		} catch (NumberFormatException e) {
-			handleError(exchange, 500, "Job or entry id is not a number!", e);
+			handleError(exchange, HttpStatus.SC_INTERNAL_SERVER_ERROR, "Job or entry id is not a number!", e);
 		} catch (IllegalStateException | SQLException e) {
-			handleError(exchange, 500, e);
+			handleError(exchange, HttpStatus.SC_INTERNAL_SERVER_ERROR, e);
 		} catch (JobNotFoundException e) {
-			handleError(exchange, 403, e);
+			handleError(exchange, HttpStatus.SC_FORBIDDEN, e);
 		} catch (EntryNotFoundException e) {
-			handleError(exchange, 404, e);
+			handleError(exchange, HttpStatus.SC_NOT_FOUND, e);
 		}
 	}
 
-	private void handlePost(HttpExchange exchange, long jobId) throws IOException, IllegalStateException, JobNotFoundException,
-			SQLException {
+	private void handlePost(HttpExchange exchange, long jobId) throws IOException, JobNotFoundException, SQLException {
 		LOGGER.info("Post method. {}", exchange.getRequestURI().getPath());
 
 		String dataId = String.valueOf(addData(exchange.getRequestBody(), jobId));
@@ -91,7 +94,7 @@ public class DataHandler extends AbstractHandler {
 		headers.set("Location", jobId + "/" + dataId);
 		String message = "New entry added with id: " + dataId;
 
-		exchange.sendResponseHeaders(201, message.length());
+		exchange.sendResponseHeaders(HttpStatus.SC_CREATED, message.length());
 		exchange.getResponseBody().write(message.getBytes());
 		LOGGER.info(message);
 	}
@@ -124,12 +127,12 @@ public class DataHandler extends AbstractHandler {
 
 	private Connection createNewDatabase(long jobId) throws SQLException {
 		// Create new database.
-		Connection h2Connection = DriverManager.getConnection("jdbc:h2:" + DataStore.getDbFileName(jobId), "sa", "");
-		h2Connection.setAutoCommit(true);
+		Connection h2Connection = DriverManager.getConnection("jdbc:h2:" + DataStore.getDbFileName(jobId) + ";LOG=0", "sa", H2_DB_PASSWORD);
 		h2Connections.put(jobId, h2Connection);
+
 		// Create new table.
 		try (Statement s = h2Connection.createStatement()) {
-			s.execute("SET MAX_LOG_SIZE 200");
+			s.execute("SET MAX_LOG_SIZE 1");
 			boolean resultCreateTable = s.execute("CREATE TABLE JOB_DATA (ID BIGINT, DATA IMAGE)");
 			if (resultCreateTable) {
 				// Should never happen.
@@ -157,7 +160,7 @@ public class DataHandler extends AbstractHandler {
 			// Size 0 means: unknown.
 			int size = 0;
 
-			exchange.sendResponseHeaders(200, size);
+			exchange.sendResponseHeaders(HttpStatus.SC_OK, size);
 			IOUtils.copyLarge(is, exchange.getResponseBody());
 		}
 	}
@@ -187,9 +190,10 @@ public class DataHandler extends AbstractHandler {
 		Blob data = null;
 		try (PreparedStatement statement = h2Connection.prepareStatement("SELECT DATA FROM JOB_DATA WHERE ID=?")) {
 			statement.setLong(1, entryId);
-			ResultSet result = statement.executeQuery();
-			if (result.next()) {
-				data = result.getBlob(1);
+			try (ResultSet result = statement.executeQuery()) {
+				if (result.next()) {
+					data = result.getBlob(1);
+				}
 			}
 		}
 		if (data == null) {
