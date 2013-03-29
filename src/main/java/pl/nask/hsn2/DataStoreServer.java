@@ -41,7 +41,7 @@ public class DataStoreServer {
 	private HttpServer server;
 	private final ConcurrentHashMap<Long, Connection> h2Connections;
 
-	public DataStoreServer(int port, ConcurrentHashMap<Long, Connection> h2ConnectionsPool) throws ClassNotFoundException, SQLException {
+	public DataStoreServer(int port, ConcurrentHashMap<Long, Connection> h2ConnectionsPool) throws ClassNotFoundException {
 		h2Connections = h2ConnectionsPool;
 		InetSocketAddress addr = new InetSocketAddress(port);
 		try {

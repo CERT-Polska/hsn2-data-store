@@ -125,8 +125,8 @@ public final class DataStore implements Daemon {
 				new Thread(new DataStoreActiveCleaner(rbtHostName, opt.getRbtNotifyExch(), opt.getLeaveData(),
 						opt.getCleaningThreadsNumber(), h2ConnectionsPool)).start();
 			}
-		} catch (SQLException|ClassNotFoundException e1) {
-			throw new DaemonInitException("H2 database initialization, failed.");
+		} catch (ClassNotFoundException e1) {
+			throw new DaemonInitException("H2 database initialization, failed.", e1);
 		}
 	}
 

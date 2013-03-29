@@ -59,12 +59,13 @@ public class DataStoreCleanSingleJob implements Runnable {
 	 * Removes database file. (Every job has its own database file.)
 	 */
 	private void removeJobData() {
+		String filename = DataStore.getDbFileName(jobId);
 		try {
-			Files.delete(new File(DataStore.getDbFileName(jobId) + ".h2.db").toPath());
-			Files.deleteIfExists(new File(DataStore.getDbFileName(jobId) + ".lock.db").toPath());
-			Files.deleteIfExists(new File(DataStore.getDbFileName(jobId) + ".trace.db").toPath());
+			Files.delete(new File(filename + ".h2.db").toPath());
+			Files.deleteIfExists(new File(filename + ".lock.db").toPath());
+			Files.deleteIfExists(new File(filename + ".trace.db").toPath());
 		} catch (IOException e) {
-			LOGGER.warn("Could not delete H2 Database file. (" + DataStore.getDbFileName(jobId) + ".h2.db)", e);
+			LOGGER.warn("Could not delete H2 Database file. (" + filename + ".h2.db)", e);
 		}
 	}
 }
