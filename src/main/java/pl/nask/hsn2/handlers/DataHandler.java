@@ -133,18 +133,8 @@ public class DataHandler extends AbstractHandler {
 		// Create new table.
 		try (Statement s = h2Connection.createStatement()) {
 			s.execute("SET MAX_LOG_SIZE 1");
-			boolean resultCreateTable = s.execute("CREATE TABLE JOB_DATA (ID BIGINT, DATA IMAGE)");
-			if (resultCreateTable) {
-				// Should never happen.
-				LOGGER.debug("Create table, failed. (db={})", DataStore.getDbFileName(jobId));
-			} else {
-				resultCreateTable = s.execute("ALTER TABLE JOB_DATA ADD UNIQUE (ID)");
-				if (resultCreateTable) {
-					LOGGER.debug("Create table, done. Make ID unique, failed.");
-				} else {
-					LOGGER.debug("Create table, done. Make ID unique, done.");
-				}
-			}
+			s.execute("CREATE TABLE JOB_DATA (ID BIGINT, DATA IMAGE)");
+			s.execute("ALTER TABLE JOB_DATA ADD UNIQUE (ID)");
 		}
 
 		return h2Connection;
