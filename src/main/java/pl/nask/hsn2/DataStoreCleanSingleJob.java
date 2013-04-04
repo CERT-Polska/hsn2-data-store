@@ -28,7 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class DataStoreCleanSingleJob implements Runnable {
-	private static final double ONE_MIN_IN_MS = 1000d;
+	private static final double ONE_SEC_IN_MS = 1000d;
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreCleanSingleJob.class);
 	private final ConcurrentSkipListSet<Long> currentlyCleaningJobs;
 	private final long jobId;
@@ -52,7 +52,7 @@ public class DataStoreCleanSingleJob implements Runnable {
 		currentlyCleaningJobs.remove(jobId);
 
 		time = System.currentTimeMillis() - time;
-		LOGGER.info("Single cleaner task finished. (job={}, time[sec]={})", jobId, time / ONE_MIN_IN_MS);
+		LOGGER.info("Single cleaner task finished. (job={}, time[sec]={})", jobId, time / ONE_SEC_IN_MS);
 	}
 
 	/**
