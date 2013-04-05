@@ -19,6 +19,8 @@
 
 package pl.nask.hsn2;
 
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -34,16 +36,40 @@ public class DataStoreSingleJobCleanerTest {
 	@Test
 	public void jobDataCleaning() throws Exception {
 		// Init
-		ConcurrentSkipListSet<Long> actualCleaningJobsList = new ConcurrentSkipListSet<>();
 		long jobIdToClean = 1;
-		actualCleaningJobsList.add(jobIdToClean);
-		Path dataDirToClean = DataStoreTestUtils.prepareTempDir();
-		DataStoreCleanSingleJob cleaner = new DataStoreCleanSingleJob(actualCleaningJobsList, jobIdToClean, dataDirToClean.toFile());
+		ConcurrentSkipListSet<Long> actualCleaningJobsList = createTestFiles(jobIdToClean);
+
+		// Do test.
+		DataStoreCleanSingleJob cleaner = new DataStoreCleanSingleJob(actualCleaningJobsList, jobIdToClean);
 		Thread thread = new Thread(cleaner);
 		thread.start();
 		thread.join();
 
+		// Asserts.
 		Assert.assertTrue(actualCleaningJobsList.isEmpty(), "Cleaning job list should be empty.");
-		Assert.assertTrue(Files.notExists(dataDirToClean), "Temp dir should be removed, but it exists. " + dataDirToClean);
+		assertH2DbFiles(jobIdToClean);
+	}
+
+	private void assertH2DbFiles(long jobIdToClean) {
+		Path path;
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".h2.db").toPath();
+		Assert.assertTrue(Files.notExists(path), "H2 db file should be removed, but it exists. " + path);
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".lock.db").toPath();
+		Assert.assertTrue(Files.notExists(path), "H2 db lock file should be removed, but it exists. " + path);
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".trace.db").toPath();
+		Assert.assertTrue(Files.notExists(path), "H2 db trace file should be removed, but it exists. " + path);
+	}
+
+	private ConcurrentSkipListSet<Long> createTestFiles(long jobIdToClean) throws IOException {
+		Path path;
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".h2.db").toPath();
+		Files.createFile(path);
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".lock.db").toPath();
+		Files.createFile(path);
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".trace.db").toPath();
+		Files.createFile(path);
+		ConcurrentSkipListSet<Long> actualCleaningJobsList = new ConcurrentSkipListSet<>();
+		actualCleaningJobsList.add(jobIdToClean);
+		return actualCleaningJobsList;
 	}
 }

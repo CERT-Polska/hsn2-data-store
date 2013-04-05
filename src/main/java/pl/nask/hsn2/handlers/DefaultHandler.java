@@ -22,23 +22,25 @@ package pl.nask.hsn2.handlers;
 import java.io.IOException;
 import java.net.URI;
 
+import org.apache.commons.httpclient.HttpStatus;
+
 import com.sun.net.httpserver.HttpExchange;
 
-public class DefaultHandler extends AbstractHandler{
-	
+@SuppressWarnings("restriction")
+public class DefaultHandler extends AbstractHandler {
+
 	@Override
 	protected void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException {
 		String msg = "";
 		int responseCode = -1;
-		
-		if("/".equals(uri.getPath()) && "GET".equalsIgnoreCase(requestMethod)){
+
+		if ("/".equals(uri.getPath()) && "GET".equalsIgnoreCase(requestMethod)) {
 			msg = "DataStore ok!";
-			responseCode = 200;
-		}
-		else{
+			responseCode = HttpStatus.SC_OK;
+		} else {
 			msg = "Unexpected request!";
-			LOGGER.error(msg + " {}",exchange.getRequestURI());
-			responseCode = 403;
+			LOGGER.error(msg + " {}", exchange.getRequestURI());
+			responseCode = HttpStatus.SC_FORBIDDEN;
 		}
 		exchange.sendResponseHeaders(responseCode, msg.length());
 		exchange.getResponseBody().write(msg.getBytes());

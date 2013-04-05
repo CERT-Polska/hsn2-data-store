@@ -1,6 +1,5 @@
 /*
  * Copyright (c) NASK, NCSC
- * 
  * This file is part of HoneySpider Network 2.0.
  * 
  * This is a free software: you can redistribute it and/or modify
@@ -19,12 +18,14 @@
 
 package pl.nask.hsn2;
 
-import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.SQLException;
+import java.util.concurrent.ConcurrentHashMap;
 
 import mockit.Delegate;
 import mockit.Mocked;
@@ -33,9 +34,15 @@ import mockit.NonStrictExpectations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 import pl.nask.hsn2.DataStoreActiveCleaner.LeaveJobOption;
+import pl.nask.hsn2.connector.REST.DataStoreConnector;
+import pl.nask.hsn2.connector.REST.DataStoreConnectorImpl;
+import pl.nask.hsn2.protobuff.DataStore.DataResponse;
 import pl.nask.hsn2.protobuff.Jobs.JobFinished;
 import pl.nask.hsn2.protobuff.Jobs.JobFinishedReminder;
 import pl.nask.hsn2.protobuff.Jobs.JobStatus;
@@ -62,9 +69,15 @@ public class DataStoreActiveCleanerTest {
 	@Mocked
 	QueueingConsumer consumer;
 
-	private Path dirBase;
-	CleaningActions nextAction;
-	private boolean connCloseRequested = false;
+	private static final String HOST = "localhost";
+	private static final int PORT = 7777;
+	private static final ConcurrentHashMap<Long, java.sql.Connection> H2_CONN_POOL = new ConcurrentHashMap<>();
+
+	private static DataStoreConnector dsConnector;
+	private static DataStoreServer server;
+
+	private CleaningActions nextAction;
+	private boolean connCloseRequested;
 
 	@SuppressWarnings({ "rawtypes", "unused" })
 	private void mockObjectsWithConnectionException() throws Exception {
@@ -264,6 +277,32 @@ public class DataStoreActiveCleanerTest {
 		REMOVE_JOB_1, REMOVE_JOB_2, REMOVE_JOB_3, CANCEL, NEVER_RETURN, INTERRUPT, SHUTDOWN, IO_EXCEPTION, REMOVE_JOB_3_AGAIN, REMOVE_JOB_4, REMOVE_JOB_5, TASK_ACCEPTED
 	}
 
+	@BeforeClass
+	public void beforeClass() throws ClassNotFoundException, SQLException {
+		server = new DataStoreServer(PORT, H2_CONN_POOL);
+		server.start();
+		dsConnector = new DataStoreConnectorImpl("http://" + HOST + ":" + PORT + "/");
+	}
+
+	@BeforeTest
+	public void beforeTest() {
+		H2_CONN_POOL.clear();
+		LOGGER.info("\n\nBEFORE TEST\n");
+	}
+
+	@AfterClass
+	public void afterClass() throws SQLException {
+		server.close();
+	}
+
+	private void addData(long job) throws Exception {
+		try (InputStream inputStream = new ByteArrayInputStream("test".getBytes())) {
+			DataResponse resp = dsConnector.sendPost(inputStream, job);
+			long id = resp.getRef().getKey();
+			LOGGER.info("Data added. (job={}, id={})", job, id);
+		}
+	}
+
 	/**
 	 * Standard cleaning tasks. Test creates dirs for job id=1 and id=2 and then it starts cleaner to remove this dirs.
 	 * 
@@ -273,20 +312,54 @@ public class DataStoreActiveCleanerTest {
 	@Test
 	public void cleanerTest() throws Exception {
 		mockObjects();
-		prepareDirs(new long[] { 1, 2 });
+		addData(1L);
+		addData(2L);
 		nextAction = CleaningActions.TASK_ACCEPTED;
 
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, dirBase.toFile());
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
 
 		Thread.sleep(100);
-		Assert.assertTrue(Files.notExists(new File(dirBase.toString(), "1").toPath()));
-		Assert.assertTrue(Files.notExists(new File(dirBase.toString(), "2").toPath()));
 		Assert.assertTrue(connCloseRequested);
+		assertH2DbFilesAreDeleted(1);
+		assertH2DbFilesAreDeleted(2);
+	}
 
-		Files.deleteIfExists(dirBase);
+	/**
+	 * Check assertion that all H2 DB files for job id has been deleted.
+	 * 
+	 * @param jobIdToClean
+	 *            Job id.
+	 */
+	private void assertH2DbFilesAreDeleted(long jobIdToClean) {
+		Path path;
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".h2.db").toPath();
+		Assert.assertTrue(Files.notExists(path), "H2 db file should be removed, but it exists. " + path);
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".lock.db").toPath();
+		Assert.assertTrue(Files.notExists(path), "H2 db lock file should be removed, but it exists. " + path);
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".trace.db").toPath();
+		Assert.assertTrue(Files.notExists(path), "H2 db trace file should be removed, but it exists. " + path);
+	}
+
+	/**
+	 * Check assertion that H2 DB file for job id has not been deleted. Lock file should be deleted automatically by H2.
+	 * Trace file should never be produced. H2 DB file will be deleted after the test.
+	 * 
+	 * @param jobIdToClean
+	 *            Job id.
+	 * @throws IOException
+	 */
+	private void assertH2DbFilesAreNotDeleted(long jobIdToClean) throws IOException {
+		Path path;
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".h2.db").toPath();
+		Assert.assertTrue(Files.exists(path), "H2 db file should be removed, but it exists. " + path);
+		Files.delete(path);
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".lock.db").toPath();
+		Assert.assertTrue(Files.notExists(path), "H2 db lock file should be removed, but it exists. " + path);
+		path = new File(DataStore.getDbFileName(jobIdToClean) + ".trace.db").toPath();
+		Assert.assertTrue(Files.notExists(path), "H2 db trace file should be removed, but it exists. " + path);
 	}
 
 	/**
@@ -299,20 +372,19 @@ public class DataStoreActiveCleanerTest {
 	@Test
 	public void cleanerTestLeaveFailed() throws Exception {
 		mockObjects();
-		prepareDirs(new long[] { 1, 2 });
+		addData(1L);
+		addData(2L);
 		nextAction = CleaningActions.TASK_ACCEPTED;
 
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.FAILED, 1, dirBase.toFile());
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.FAILED, 1, H2_CONN_POOL);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
 
 		Thread.sleep(100);
-		Assert.assertTrue(Files.notExists(new File(dirBase.toString(), "1").toPath()));
-		Assert.assertTrue(Files.notExists(new File(dirBase.toString(), "2").toPath()));
 		Assert.assertTrue(connCloseRequested);
-
-		Files.deleteIfExists(dirBase);
+		assertH2DbFilesAreDeleted(1);
+		assertH2DbFilesAreDeleted(2);
 	}
 
 	/**
@@ -325,23 +397,22 @@ public class DataStoreActiveCleanerTest {
 	@Test
 	public void jobNotEligibleForClean() throws Exception {
 		mockObjects();
-		prepareDirs(new long[] { 5 });
+		addData(5);
 		nextAction = CleaningActions.REMOVE_JOB_5;
 
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.FAILED, 1, dirBase.toFile());
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.FAILED, 1, H2_CONN_POOL);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
 
 		Thread.sleep(100);
-		Assert.assertTrue(Files.exists(new File(dirBase.toString(), "5").toPath()));
 		Assert.assertTrue(connCloseRequested);
-
-		DataStoreCleaner.deleteNonEmptyDirectory(dirBase.toFile());
+		assertH2DbFilesAreNotDeleted(5);
 	}
 
 	/**
-	 * Test requests task of cleaning job id=3, and then requests again another task to clean the same job.
+	 * Test requests task of cleaning job id=3, and then requests again another task to clean the same job. Test
+	 * succeeds when there is no exception. (Except of ConsumerCancelledException which is thrown by test itself).
 	 * 
 	 * @throws Exception
 	 *             When something goes wrong.
@@ -350,20 +421,21 @@ public class DataStoreActiveCleanerTest {
 	public void doubleCleaningTheSameJob() throws Exception {
 		mockObjects();
 		mockSingleCleaner();
-		prepareDirs(new long[] { 3 });
+		long job = 3;
+		addData(job);
 		nextAction = CleaningActions.REMOVE_JOB_3;
 
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 2, dirBase.toFile());
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 2, H2_CONN_POOL);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
 
 		Assert.assertTrue(connCloseRequested);
-		DataStoreCleaner.deleteNonEmptyDirectory(dirBase.toFile());
+		Files.deleteIfExists(new File(DataStore.getDbFileName(job) + ".h2.db").toPath());
 	}
 
 	/**
-	 * Test requests cleaning data for job id=4, but there is no directory for this job.
+	 * Test requests cleaning data for job id=4, but there is no H2 DB files for this job.
 	 * 
 	 * @throws Exception
 	 *             When something goes wrong.
@@ -373,43 +445,10 @@ public class DataStoreActiveCleanerTest {
 		mockObjects();
 		nextAction = CleaningActions.REMOVE_JOB_4;
 
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, new File(DataStore.DATA_PATH));
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
-	}
-
-	/**
-	 * Prepares directories for tests.
-	 * 
-	 * @param jobDirectories
-	 *            Array of job ids for which directory should be created.
-	 * @throws IOException
-	 *             When something goes wrong.
-	 */
-	private void prepareDirs(long[] jobDirectories) throws IOException {
-		dirBase = Files.createTempDirectory("hsn2-data-store_");
-		for (int i = 0; i < jobDirectories.length; i++) {
-			prepareJobDir(jobDirectories[i]);
-		}
-	}
-
-	/**
-	 * Prepares directory for one job.
-	 * 
-	 * @param jobId
-	 *            Id of job.
-	 * @throws IOException
-	 *             When something goes wrong.
-	 */
-	private void prepareJobDir(long jobId) throws IOException {
-		Path dir = Files.createDirectory(new File(dirBase.toString(), "" + jobId).toPath());
-		for (int i = 0; i < 5; i++) {
-			File tempFile = new File(dir.toFile(), "someFile-" + i);
-			try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile))) {
-				writer.write("test");
-			}
-		}
 	}
 
 	/**
@@ -426,7 +465,7 @@ public class DataStoreActiveCleanerTest {
 	public void cleanerNotNeeded() throws Exception {
 		nextAction = CleaningActions.NEVER_RETURN;
 		mockObjects();
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.ALL, 1, new File(DataStore.DATA_PATH));
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.ALL, 1, H2_CONN_POOL);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
@@ -444,7 +483,7 @@ public class DataStoreActiveCleanerTest {
 	public void shutdownCleaner() throws Exception {
 		nextAction = CleaningActions.NEVER_RETURN;
 		mockObjects();
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, new File(DataStore.DATA_PATH));
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		Thread.sleep(100);
@@ -463,7 +502,7 @@ public class DataStoreActiveCleanerTest {
 	public void shutdownCleanerWithException() throws Exception {
 		nextAction = CleaningActions.NEVER_RETURN;
 		mockObjectsWithConnectionException();
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, new File(DataStore.DATA_PATH));
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		Thread.sleep(100);
@@ -482,7 +521,7 @@ public class DataStoreActiveCleanerTest {
 	public void interruptCleaning() throws Exception {
 		nextAction = CleaningActions.INTERRUPT;
 		mockObjects();
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, new File(DataStore.DATA_PATH));
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
@@ -495,14 +534,25 @@ public class DataStoreActiveCleanerTest {
 	 * @throws Exception
 	 *             When something goes wrong.
 	 */
-	@Test(timeOut = 1000)
-	public void shutdownSignal() throws Exception {
+	@Test(timeOut = 100000)
+	public void shutdownSignal() {
 		nextAction = CleaningActions.SHUTDOWN;
-		mockObjects();
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, new File(DataStore.DATA_PATH));
+		try {
+			mockObjects();
+		} catch (Exception e) {
+			LOGGER.info("Test failed:", e);
+			Assert.fail();
+		}
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
-		cleaner.join();
+		try {
+			cleaner.join();
+		} catch (InterruptedException e) {
+			LOGGER.info("Test failed:", e);
+			Assert.fail();
+		}
+		Assert.assertTrue(connCloseRequested);
 	}
 
 	/**
@@ -516,7 +566,7 @@ public class DataStoreActiveCleanerTest {
 	public void ioExceptionTest() throws Exception {
 		nextAction = CleaningActions.IO_EXCEPTION;
 		mockObjects();
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, new File(DataStore.DATA_PATH));
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();

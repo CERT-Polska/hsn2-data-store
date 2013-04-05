@@ -1,6 +1,5 @@
 /*
  * Copyright (c) NASK, NCSC
- * 
  * This file is part of HoneySpider Network 2.0.
  * 
  * This is a free software: you can redistribute it and/or modify
@@ -19,15 +18,17 @@
 
 package pl.nask.hsn2;
 
-import java.io.BufferedReader;
+import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.file.Files;
+import java.sql.Connection;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,71 +37,79 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import pl.nask.hsn2.exceptions.JobNotFoundException;
+import pl.nask.hsn2.connector.REST.DataStoreConnector;
+import pl.nask.hsn2.connector.REST.DataStoreConnectorImpl;
+import pl.nask.hsn2.protobuff.DataStore.DataResponse;
 
 public class DataStoreTest {
-	private long id = -1;
-	private long job = 0;
-	private int port = 5560;
-	private String urlString = "http://127.0.0.1:" + port;
-	private DataStoreServer server;
+	private static final String URL_SEPARATOR = "/";
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreTest.class);
+	private static final String DATA_DIR_NAME = "data";
+	private static final String TEST_STRING = "test";
+
+	private long id = -1;
+	private long job = 1234567890;
+	private int port = 5560;
+	private String urlString = "http://localhost:" + port + URL_SEPARATOR;
+	private DataStoreServer server;
+	private ConcurrentHashMap<Long, Connection> h2ConnPool;
+
+	private static DataStoreConnector dsConnector;
 
 	@BeforeClass
-	public void beforeClass() {
-		deleteDirectory("data" + File.separator + job);
-		deleteDirectory(DataStore.getDataPath() + File.separator + job);
-		server = new DataStoreServer(port);
+	public void beforeClass() throws Exception {
+		deleteTestJobData();
+		h2ConnPool = new ConcurrentHashMap<>();
+		server = new DataStoreServer(port, h2ConnPool);
 		server.start();
+		dsConnector = new DataStoreConnectorImpl(urlString);
 	}
 
-	private void deleteDirectory(String path) {
-		File file = new File(path);
-		LOGGER.info("Directory to delete: {}", file.getAbsoluteFile());
-		if (file.exists()) {
-			LOGGER.info("Job directory exists");
-			for (File f : file.listFiles()) {
-				if (f.delete()) {
-					LOGGER.info("File deleted: {}", f.getAbsoluteFile());
-				}
-			}
-			file.delete();
-			LOGGER.info("File deleted: {}", file.getAbsoluteFile());
+	@AfterClass
+	public void afterClass() throws Exception {
+		server.close();
+		deleteTestJobData();
+	}
+
+	private void deleteTestJobData() throws IOException {
+		// Check if 'data' directory exists.
+		File dataDir = new File(DATA_DIR_NAME);
+		if (Files.exists(dataDir.toPath())) {
+			// Dir exists. Delete job files if needed.
+			LOGGER.info("\n\nDATABASE FILE = {}\n", DataStore.getDbFileName(job) + ".h2.db");
+			Files.deleteIfExists(new File(DataStore.getDbFileName(job) + ".h2.db").toPath());
+			Files.deleteIfExists(new File(DataStore.getDbFileName(job) + ".lock.db").toPath());
+			Files.deleteIfExists(new File(DataStore.getDbFileName(job) + ".trace.db").toPath());
 		} else {
-			LOGGER.info("Job directory does NOT exists");
+			// Directory does not exists so there is no need to remove job data files. Just create directory.
+			Files.createDirectories(dataDir.toPath());
 		}
 	}
 
 	@Test
-	public void addData() throws IOException, IllegalStateException, JobNotFoundException {
-		InputStream inputStream = null;
-		try {
-			inputStream = new ByteArrayInputStream("test".getBytes());
-			id = DataStore.addData(inputStream, 0);
+	public void addData() throws Exception {
+		try (InputStream inputStream = new ByteArrayInputStream(TEST_STRING.getBytes())) {
+			DataResponse resp = dsConnector.sendPost(inputStream, job);
+			id = resp.getRef().getKey();
 			Assert.assertNotEquals(id, -1);
-		} finally {
-			if (inputStream != null) {
-				inputStream.close();
-			}
 		}
 	}
 
-	@Test
-	public void getData() throws IOException, JobNotFoundException {
-		BufferedReader bufferedReader = null;
-		try {
-			bufferedReader = new BufferedReader(new FileReader(DataStore.getFileForJob(0, id)));
-			Assert.assertEquals(bufferedReader.readLine(), "test");
-		} finally {
-			if (bufferedReader != null) {
-				bufferedReader.close();
+	@Test(dependsOnMethods = { "addData" })
+	public void getData() throws Exception {
+		try (BufferedInputStream bis = new BufferedInputStream(dsConnector.getResourceAsStream(job, id))) {
+			StringBuilder sb = new StringBuilder();
+			int chInt;
+			while ((chInt = bis.read()) != -1) {
+				sb.append((char) chInt);
 			}
+			Assert.assertEquals(sb.toString(), TEST_STRING);
 		}
 	}
 
-	@Test
+	@Test(dependsOnMethods = { "addData" })
 	public void getDataRequest() throws IOException {
-		String getData = "/data/0/0";
+		String getData = DATA_DIR_NAME + URL_SEPARATOR + job + URL_SEPARATOR + id;
 		URL url = new URL(urlString + getData);
 		URLConnection conn = url.openConnection();
 		Assert.assertEquals(conn.getHeaderField("Content-type"), "application/octet-stream");
@@ -108,33 +117,16 @@ public class DataStoreTest {
 
 	@Test
 	public void addDataRequest() throws IOException {
-		String getData = "/data/0";
+		String getData = DATA_DIR_NAME + URL_SEPARATOR + job;
 		URL url = new URL(urlString + getData);
 		URLConnection conn = url.openConnection();
 		conn.setDoOutput(true);
 
-		String data = "test";
-		OutputStream wr = null;
-		try {
-			wr = conn.getOutputStream();
+		String data = TEST_STRING;
+		try (OutputStream wr = conn.getOutputStream()) {
 			wr.write(data.getBytes());
 			wr.flush();
 			Assert.assertNotEquals(conn.getHeaderField("Content-ID"), null);
-		} finally {
-			if (wr != null) {
-				wr.close();
-			}
 		}
 	}
-
-	@AfterClass
-	public void afterClass() {
-		File file = new File("data" + File.separator + job);
-		if (file.exists()) {
-			new File("data" + File.separator + job + File.separator + id).delete();
-			file.delete();
-		}
-		server.close();
-	}
-
 }

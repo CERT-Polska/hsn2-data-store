@@ -20,23 +20,23 @@
 package pl.nask.hsn2;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class DataStoreCleanSingleJob implements Runnable {
-	private static final double ONE_MIN_IN_MS = 1000d;
+	private static final double ONE_SEC_IN_MS = 1000d;
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreCleanSingleJob.class);
 	private final ConcurrentSkipListSet<Long> currentlyCleaningJobs;
 	private final long jobId;
-	private final File dirToClean;
 
-	public DataStoreCleanSingleJob(ConcurrentSkipListSet<Long> actualCleaningJobsList, long jobIdToClean, File dataDirToClean) {
+	public DataStoreCleanSingleJob(ConcurrentSkipListSet<Long> actualCleaningJobsList, long jobIdToClean) {
 		currentlyCleaningJobs = actualCleaningJobsList;
 		jobId = jobIdToClean;
 		currentlyCleaningJobs.add(jobId);
-		dirToClean = dataDirToClean;
 		LOGGER.debug("Single cleaner initialized. (job={})", jobIdToClean);
 	}
 
@@ -46,12 +46,26 @@ public class DataStoreCleanSingleJob implements Runnable {
 		long time = System.currentTimeMillis();
 
 		// Clean.
-		DataStoreCleaner.deleteNonEmptyDirectory(dirToClean);
+		removeJobData();
 
 		// Task ended. Remove job from actual cleaning jobs list.
 		currentlyCleaningJobs.remove(jobId);
 
 		time = System.currentTimeMillis() - time;
-		LOGGER.info("Single cleaner task finished. (job={}, time[sec]={})", jobId, time / ONE_MIN_IN_MS);
+		LOGGER.info("Single cleaner task finished. (job={}, time[sec]={})", jobId, time / ONE_SEC_IN_MS);
+	}
+
+	/**
+	 * Removes database file. (Every job has its own database file.)
+	 */
+	private void removeJobData() {
+		String filename = DataStore.getDbFileName(jobId);
+		try {
+			Files.delete(new File(filename + ".h2.db").toPath());
+			Files.deleteIfExists(new File(filename + ".lock.db").toPath());
+			Files.deleteIfExists(new File(filename + ".trace.db").toPath());
+		} catch (IOException e) {
+			LOGGER.warn("Could not delete H2 Database file. (" + filename + ".h2.db)", e);
+		}
 	}
 }
