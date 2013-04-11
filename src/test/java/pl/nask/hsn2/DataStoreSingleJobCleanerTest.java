@@ -61,6 +61,13 @@ public class DataStoreSingleJobCleanerTest {
 	}
 
 	private ConcurrentSkipListSet<Long> createTestFiles(long jobIdToClean) throws IOException {
+		// Make sure data dir exists.
+		File dataFile = new File(DataStore.getDbFileName(jobIdToClean)).getParentFile();
+		if (!dataFile.exists()) {
+			Files.createDirectories(dataFile.toPath());
+		}
+
+		// Create files.
 		Path path;
 		path = new File(DataStore.getDbFileName(jobIdToClean) + ".h2.db").toPath();
 		Files.createFile(path);
