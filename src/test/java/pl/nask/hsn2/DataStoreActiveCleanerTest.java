@@ -40,9 +40,9 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 import pl.nask.hsn2.DataStoreActiveCleaner.LeaveJobOption;
+import pl.nask.hsn2.connector.REST.DataResponse;
 import pl.nask.hsn2.connector.REST.DataStoreConnector;
 import pl.nask.hsn2.connector.REST.DataStoreConnectorImpl;
-import pl.nask.hsn2.protobuff.DataStore.DataResponse;
 import pl.nask.hsn2.protobuff.Jobs.JobFinished;
 import pl.nask.hsn2.protobuff.Jobs.JobFinishedReminder;
 import pl.nask.hsn2.protobuff.Jobs.JobStatus;
@@ -298,7 +298,7 @@ public class DataStoreActiveCleanerTest {
 	private void addData(long job) throws Exception {
 		try (InputStream inputStream = new ByteArrayInputStream("test".getBytes())) {
 			DataResponse resp = dsConnector.sendPost(inputStream, job);
-			long id = resp.getRef().getKey();
+			long id = resp.getKeyId();
 			LOGGER.info("Data added. (job={}, id={})", job, id);
 		}
 	}

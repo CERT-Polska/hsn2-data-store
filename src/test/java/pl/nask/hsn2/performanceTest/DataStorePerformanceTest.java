@@ -51,10 +51,9 @@ import pl.nask.hsn2.bus.rabbitmq.RbtDestination;
 import pl.nask.hsn2.bus.serializer.MessageSerializer;
 import pl.nask.hsn2.bus.serializer.MessageSerializerException;
 import pl.nask.hsn2.bus.serializer.protobuf.ProtoBufMessageSerializer;
+import pl.nask.hsn2.connector.REST.DataResponse;
 import pl.nask.hsn2.connector.REST.DataStoreConnector;
 import pl.nask.hsn2.connector.REST.DataStoreConnectorImpl;
-import pl.nask.hsn2.protobuff.DataStore.DataResponse;
-import pl.nask.hsn2.protobuff.DataStore.DataResponse.ResponseType;
 
 import com.rabbitmq.client.AMQP.BasicProperties;
 import com.rabbitmq.client.Channel;
@@ -67,7 +66,6 @@ public class DataStorePerformanceTest {
 	private static final int TEST_TEXT_LENGTH = TEST_TEXT.length();
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStorePerformanceTest.class);
 
-	private static String stringForDataStore;
 	private static Path bigFile;
 	private static Path smallFile;
 	private static MessageSerializer<Operation> defaultSerializer;
@@ -93,18 +91,16 @@ public class DataStorePerformanceTest {
 		CmdLineOpt cmdLineOpt = new CmdLineOpt(args);
 		prepareTempFiles(cmdLineOpt);
 		prepareStaticVariables(cmdLineOpt);
-		LOGGER.info(
-				"\nStarting with options:\n- files to test = {}\n- threads number = {}\n- job id = {}\n- big file"
-						+ " size = {}\n- small file size = {}\n- strings per iteration = {}\n- small files per iteration = {}"
-						+ "\n- big files per iteration = {}\n- rabbitmq host = {}\n- rabbitmq main exch = {}\n- rabbitmq notify"
-						+ " exch = {}\n- data store url = {}\n",
-				new Object[] { cmdLineOpt.getHowManyFiles(), cmdLineOpt.getThreadsNumber(), jobId, cmdLineOpt.getBigFileSize(),
-						cmdLineOpt.getSmallFileSize(), cmdLineOpt.getStringFilesLimit(), cmdLineOpt.getSmallFilesLimit(),
-						cmdLineOpt.getBigFilesLimit(), rbtHostName, rbtMainExchName, rbtNotifyExchName, cmdLineOpt.getDsUrl() });
+		LOGGER.info("\nStarting with options:\n- files to test = {}\n- threads number = {}\n- job id = {}\n"
+				+ "- big file size = {}\n- small file size = {}\n- small files per iteration = {}\n"
+				+ "- big files per iteration = {}\n- rabbitmq host = {}\n- rabbitmq main exch = {}\n- rabbitmq notify"
+				+ " exch = {}\n- data store url = {}\n", cmdLineOpt.getHowManyFiles(), cmdLineOpt.getThreadsNumber(), jobId,
+				cmdLineOpt.getBigFileSize(), cmdLineOpt.getSmallFileSize(), cmdLineOpt.getSmallFilesLimit(), cmdLineOpt.getBigFilesLimit(),
+				rbtHostName, rbtMainExchName, rbtNotifyExchName, cmdLineOpt.getDsUrl());
 
 		// Submit all tasks.
 		CountDownLatch latch = new CountDownLatch(2 * cmdLineOpt.getHowManyFiles());
-		ActionType nextAction = ActionType.STRING;
+		ActionType nextAction = ActionType.SMALL_FILE;
 		int filesCounter = 0;
 		long time = System.currentTimeMillis();
 		for (int i = 0; i < cmdLineOpt.getHowManyFiles(); i++) {
@@ -153,7 +149,7 @@ public class DataStorePerformanceTest {
 		for (int i = 0; i < 100; i++) {
 			sb.append(TEST_TEXT);
 		}
-		stringForDataStore = sb.toString();
+		sb.toString();
 
 		try {
 			// Prepare big file.
@@ -168,18 +164,11 @@ public class DataStorePerformanceTest {
 		}
 
 		// Set files limits.
-		ActionType.STRING.setFilesLimit(cmdLnOpt.getStringFilesLimit());
 		ActionType.SMALL_FILE.setFilesLimit(cmdLnOpt.getSmallFilesLimit());
 		ActionType.BIG_FILE.setFilesLimit(cmdLnOpt.getBigFilesLimit());
 	}
 
 	private static enum ActionType {
-		STRING {
-			@Override
-			public ActionType next() {
-				return SMALL_FILE;
-			}
-		},
 		SMALL_FILE {
 			@Override
 			public ActionType next() {
@@ -189,7 +178,7 @@ public class DataStorePerformanceTest {
 		BIG_FILE {
 			@Override
 			public ActionType next() {
-				return STRING;
+				return SMALL_FILE;
 			}
 		};
 
@@ -219,33 +208,27 @@ public class DataStorePerformanceTest {
 		public void run() {
 			DataResponse dr;
 			long key = 0;
-			ResponseType type = null;
+			boolean isSuccess = false;
 			try {
 				switch (actionToDo) {
-				case STRING:
-					LOGGER.debug("Adding string...");
-					dr = dsConnector.sendPost(stringForDataStore.getBytes(), jobId);
-					key = dr.getRef().getKey();
-					type = dr.getType();
-					break;
 				case BIG_FILE:
 					LOGGER.debug("Adding big file...");
 					try (InputStream bigFileIs = new BufferedInputStream(new FileInputStream(bigFile.toFile()))) {
 						dr = dsConnector.sendPost(bigFileIs, jobId);
-						key = dr.getRef().getKey();
-						type = dr.getType();
+						key = dr.getKeyId();
+						isSuccess = dr.isSuccesful();
 					}
 					break;
 				case SMALL_FILE:
 					LOGGER.debug("Adding small file...");
 					try (InputStream smallFileIs = new BufferedInputStream(new FileInputStream(smallFile.toFile()))) {
 						dr = dsConnector.sendPost(smallFileIs, jobId);
-						key = dr.getRef().getKey();
-						type = dr.getType();
+						key = dr.getKeyId();
+						isSuccess = dr.isSuccesful();
 					}
 					break;
 				}
-				LOGGER.debug("Data added. Response(type={}, key={})", type, key);
+				LOGGER.debug("Data added. Response(type={}, key={})", isSuccess, key);
 				executor.execute(new GetDataTask(key, latch));
 				latch.countDown();
 			} catch (IOException e) {
@@ -346,7 +329,6 @@ public class DataStorePerformanceTest {
 		private static final String THREADS_NUMBER_DEFAULT = "10";
 		private static final String SMALL_FILE_SIZE_DEFAULT = "8000000";
 		private static final String BIG_FILE_SIZE_DEFAULT = "20000000";
-		private static final String STRING_FILES_LIMIT_DEFAULT = "200";
 		private static final String SMALL_FILES_LIMIT_DEFAULT = "10";
 		private static final String BIG_FILES_LIMIT_DEFAULT = "1";
 		private static final String DS_URL_DEFAULT = "http://127.0.0.1:8080/";
@@ -359,7 +341,6 @@ public class DataStorePerformanceTest {
 		private int threadsNumber;
 		private int smallFileSize;
 		private int bigFileSize;
-		private int stringFilesLimit;
 		private int smallFilesLimit;
 		private int bigFilesLimit;
 		private String dsUrl;
@@ -407,12 +388,6 @@ public class DataStorePerformanceTest {
 			OptionBuilder.hasArgs(1);
 			OptionBuilder.withArgName("number");
 			options.addOption(OptionBuilder.create("bs"));
-
-			OptionBuilder.withDescription("Strings number per iteration. (Default: " + STRING_FILES_LIMIT_DEFAULT + ")");
-			OptionBuilder.withLongOpt("strPerIter");
-			OptionBuilder.hasArgs(1);
-			OptionBuilder.withArgName("number");
-			options.addOption(OptionBuilder.create("spi"));
 
 			OptionBuilder.withDescription("Small files number per iteration. (Default: " + SMALL_FILES_LIMIT_DEFAULT + ")");
 			OptionBuilder.withLongOpt("smlFilesPerIter");
@@ -467,7 +442,6 @@ public class DataStorePerformanceTest {
 				threadsNumber = Integer.valueOf(cmd.getOptionValue("t", THREADS_NUMBER_DEFAULT));
 				smallFileSize = Integer.valueOf(cmd.getOptionValue("ss", SMALL_FILE_SIZE_DEFAULT));
 				bigFileSize = Integer.valueOf(cmd.getOptionValue("bs", BIG_FILE_SIZE_DEFAULT));
-				stringFilesLimit = Integer.valueOf(cmd.getOptionValue("spi", STRING_FILES_LIMIT_DEFAULT));
 				smallFilesLimit = Integer.valueOf(cmd.getOptionValue("sfpi", SMALL_FILES_LIMIT_DEFAULT));
 				bigFilesLimit = Integer.valueOf(cmd.getOptionValue("bfpi", BIG_FILES_LIMIT_DEFAULT));
 				rbtHost = cmd.getOptionValue("rh", RABBITMQ_HOST_DEFAULT);
@@ -495,10 +469,6 @@ public class DataStorePerformanceTest {
 
 		public int getBigFileSize() {
 			return bigFileSize;
-		}
-
-		public int getStringFilesLimit() {
-			return stringFilesLimit;
 		}
 
 		public int getSmallFilesLimit() {

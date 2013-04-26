@@ -37,9 +37,9 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import pl.nask.hsn2.connector.REST.DataResponse;
 import pl.nask.hsn2.connector.REST.DataStoreConnector;
 import pl.nask.hsn2.connector.REST.DataStoreConnectorImpl;
-import pl.nask.hsn2.protobuff.DataStore.DataResponse;
 
 public class DataStoreTest {
 	private static final String URL_SEPARATOR = "/";
@@ -90,7 +90,7 @@ public class DataStoreTest {
 	public void addData() throws Exception {
 		try (InputStream inputStream = new ByteArrayInputStream(TEST_STRING.getBytes())) {
 			DataResponse resp = dsConnector.sendPost(inputStream, job);
-			id = resp.getRef().getKey();
+			id = resp.getKeyId();
 			Assert.assertNotEquals(id, -1);
 		}
 	}
