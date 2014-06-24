@@ -20,8 +20,9 @@
 package pl.nask.hsn2;
 
 import java.io.IOException;
-import java.sql.SQLException;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -60,12 +61,12 @@ public class DataStoreActiveCleaner implements Runnable {
 	 * data has been cleared.
 	 */
 	private final ConcurrentSkipListSet<Long> actualCleaningJobs = new ConcurrentSkipListSet<>();
+	private final FixedSizeLinkedHashMap<Long,String> finishedJobs = new FixedSizeLinkedHashMap<>(20); 
 	private final ExecutorService executor;
 	/**
 	 * RabbitMQ connection.
 	 */
 	private Connection rbtConnection;
-	private final ConcurrentHashMap<Long, java.sql.Connection> h2Connections;
 
 	/**
 	 * Creates new active cleaner.
@@ -82,8 +83,7 @@ public class DataStoreActiveCleaner implements Runnable {
 	 * @param activeJobsSet
 	 */
 	public DataStoreActiveCleaner(String rbtServerHostname, String rbtNotifyExchangeName, LeaveJobOption leaveJobValue,
-			int cleaningThreadsNumber, ConcurrentHashMap<Long, java.sql.Connection> h2ConnectionsPool) {
-		h2Connections = h2ConnectionsPool;
+			int cleaningThreadsNumber) {
 		rbtHostName = rbtServerHostname;
 		rbtNotifyExchName = rbtNotifyExchangeName;
 		leaveJob = leaveJobValue;
@@ -145,36 +145,40 @@ public class DataStoreActiveCleaner implements Runnable {
 			LOGGER.error("Connection issue.", e);
 		}
 	}
-
+	public static void main(String[] args) {
+		DataStoreActiveCleaner d = new DataStoreActiveCleaner(null, null, null, 1);
+		
+		d.startJobDataRemoving(1, JobStatus.FAILED);
+	}
 	/**
-	 * Starts new cleaning task if eligible (according to leaveJob option).
+	 * Starts new cleaning task if eligible (according to leaveJob option) 
+	 * and run cleaning for last 20 jobs if needed.
 	 * 
-	 * @param jobId
+	 * @param newJobId
 	 *            Id of job to clean.
 	 * @param jobStatus
 	 *            Job status (needed to filter failed jobs).
 	 */
-	private void startJobDataRemoving(long jobId, JobStatus jobStatus) {
-		if (actualCleaningJobs.contains(jobId)) {
-			LOGGER.info("Job data clean request ignored. Already cleaning. (jobId={})", jobId);
-		} else {
-			java.sql.Connection c = h2Connections.remove(jobId);
-			if (c == null) {
-				LOGGER.info("Job data clean request ignored. Job id not found in active jobs set. (jobId={})", jobId);
+	private void startJobDataRemoving(long newJobId, JobStatus jobStatus) {
+		if (!finishedJobs.containsKey(newJobId)){
+			finishedJobs.put(newJobId, null);
+		}
+		Set<Long> oldKeySet = new LinkedHashSet<>();
+		oldKeySet.addAll(finishedJobs.keySet());
+		for(Long oldJobId : oldKeySet){
+			if (actualCleaningJobs.contains(oldJobId)) {
+				finishedJobs.get(oldJobId);
+				LOGGER.debug("Job data clean request ignored. Already cleaning. (jobId={})", oldJobId);
+			} else if (!DataStore.isDbFileExists(oldJobId)) {
+				LOGGER.trace("Data not found for job. (jobId={})", newJobId);
+			} else if (isJobStatusEligibleToClean(jobStatus)) {
+				LOGGER.info("Job data clean request added. (jobId={})", oldJobId);
+				executor.execute(new DataStoreCleanSingleJob(actualCleaningJobs, oldJobId));
+				finishedJobs.get(oldJobId);
 			} else {
-				try {
-					c.close();
-					if (isJobStatusEligibleToClean(jobStatus)) {
-						LOGGER.info("Job data clean request added. (jobId={})", jobId);
-						executor.execute(new DataStoreCleanSingleJob(actualCleaningJobs, jobId));
-					} else {
-						LOGGER.info("Job data clean request ignored. Job status not eligible. (jobId={}, status={})", jobId,
-								jobStatus.toString());
-					}
-				} catch (SQLException e) {
-					LOGGER.warn("Could not close H2 Database connection.", e);
-				}
+				LOGGER.trace("Job data clean request ignored. Job status not eligible. (jobId={}, status={})", oldJobId, jobStatus.toString());
 			}
+		
 		}
 	}
 
@@ -222,5 +226,20 @@ public class DataStoreActiveCleaner implements Runnable {
 			LOGGER.error("Error while closing RabbitMQ connection.", e);
 		}
 		executor.shutdown();
+	}
+	
+	private class FixedSizeLinkedHashMap<T,V> extends LinkedHashMap<T,V>{
+		private static final long serialVersionUID = -2000072674384966125L;
+		private int maxSize;
+		
+		public FixedSizeLinkedHashMap(int maxSize) {
+			super(maxSize + 1, 1, true);
+			this.maxSize = maxSize;
+		}
+		
+		@Override
+		protected boolean removeEldestEntry(java.util.Map.Entry<T, V> eldest) {
+			return maxSize < this.size();
+		}
 	}
 }

@@ -27,9 +27,7 @@ import java.io.RandomAccessFile;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.daemon.Daemon;
@@ -110,8 +108,6 @@ public final class DataStore implements Daemon {
 		// Initialize H2 database.
 		try {
 			Class.forName("org.h2.Driver");
-			ConcurrentHashMap<Long, Connection> h2ConnectionsPool = new ConcurrentHashMap<>();
-			
 			
 			
 			// If help is printed we don't want to start server, only terminate app.
@@ -119,11 +115,11 @@ public final class DataStore implements Daemon {
 			if (rbtHostName != null) {
 				// Start server.
 				setIdFromConf();
-				server = new DataStoreServer(opt.getPort(), h2ConnectionsPool);
+				server = new DataStoreServer(opt.getPort());
 
 				// Start job data cleaner. (Not thread safe. Only one cleaner should be active all the time.)
 				new Thread(new DataStoreActiveCleaner(rbtHostName, opt.getRbtNotifyExch(), opt.getLeaveData(),
-						opt.getCleaningThreadsNumber(), h2ConnectionsPool)).start();
+						opt.getCleaningThreadsNumber())).start();
 			}
 		} catch (ClassNotFoundException e1) {
 			throw new DaemonInitException("H2 database initialization, failed.", e1);
@@ -148,10 +144,18 @@ public final class DataStore implements Daemon {
 
 	@Override
 	public void destroy() {
-		// Nothing to do.
+		File data = new File(DATA_PATH);
+		for (File file : data.listFiles()){
+			file.delete();
+		}
 	}
 	
 	public static String getDbFileName(long jobId) {
-		return DataStore.DATA_PATH + File.separator + "data-store-" + jobId;
+		return DATA_PATH + File.separator + "data-store-" + jobId;
+	}
+	
+	public static boolean isDbFileExists(long jobId) {
+		File dbFile = new File(DataStore.getDbFileName(jobId)+".h2.db");
+		return dbFile.exists();
 	}
 }
