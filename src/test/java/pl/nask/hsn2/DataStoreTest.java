@@ -24,11 +24,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.file.Files;
-import java.sql.Connection;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,9 +41,21 @@ import pl.nask.hsn2.connector.REST.DataStoreConnector;
 import pl.nask.hsn2.connector.REST.DataStoreConnectorImpl;
 
 public class DataStoreTest {
+	private static final String DATA_STORE_PATH;
+	static {
+		try {
+			String clazzPath = DataStore.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath();
+			File clazzFile = new File(clazzPath);
+			DATA_STORE_PATH = clazzFile.getParent() + File.separator;
+		} catch (URISyntaxException e) {
+			// Should never happen.
+			throw new IllegalArgumentException("Can't parse URL", e);
+		}
+	}
+	private static final String DATA_URL = "data";
+	private static final String DATA_PATH = DATA_STORE_PATH + DATA_URL;
 	private static final String URL_SEPARATOR = "/";
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreTest.class);
-	private static final String DATA_DIR_NAME = "data";
 	private static final String TEST_STRING = "test";
 
 	private long id = -1;
@@ -52,15 +63,13 @@ public class DataStoreTest {
 	private int port = 5560;
 	private String urlString = "http://localhost:" + port + URL_SEPARATOR;
 	private DataStoreServer server;
-	private ConcurrentHashMap<Long, Connection> h2ConnPool;
 
 	private static DataStoreConnector dsConnector;
 
 	@BeforeClass
 	public void beforeClass() throws Exception {
 		deleteTestJobData();
-		h2ConnPool = new ConcurrentHashMap<>();
-		server = new DataStoreServer(port, h2ConnPool);
+		server = new DataStoreServer(port);
 		server.start();
 		dsConnector = new DataStoreConnectorImpl(urlString);
 	}
@@ -73,7 +82,7 @@ public class DataStoreTest {
 
 	private void deleteTestJobData() throws IOException {
 		// Check if 'data' directory exists.
-		File dataDir = new File(DATA_DIR_NAME);
+		File dataDir = new File(DATA_PATH);
 		if (Files.exists(dataDir.toPath())) {
 			// Dir exists. Delete job files if needed.
 			LOGGER.info("\n\nDATABASE FILE = {}\n", DataStore.getDbFileName(job) + ".h2.db");
@@ -109,7 +118,7 @@ public class DataStoreTest {
 
 	@Test(dependsOnMethods = { "addData" })
 	public void getDataRequest() throws IOException {
-		String getData = DATA_DIR_NAME + URL_SEPARATOR + job + URL_SEPARATOR + id;
+		String getData = DATA_URL + URL_SEPARATOR + job + URL_SEPARATOR + id;
 		URL url = new URL(urlString + getData);
 		URLConnection conn = url.openConnection();
 		Assert.assertEquals(conn.getHeaderField("Content-type"), "application/octet-stream");
@@ -117,7 +126,7 @@ public class DataStoreTest {
 
 	@Test
 	public void addDataRequest() throws IOException {
-		String getData = DATA_DIR_NAME + URL_SEPARATOR + job;
+		String getData = DATA_URL + URL_SEPARATOR + job;
 		URL url = new URL(urlString + getData);
 		URLConnection conn = url.openConnection();
 		conn.setDoOutput(true);

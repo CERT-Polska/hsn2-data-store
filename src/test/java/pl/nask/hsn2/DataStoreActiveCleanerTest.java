@@ -22,10 +22,10 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
-import java.util.concurrent.ConcurrentHashMap;
 
 import mockit.Delegate;
 import mockit.Mocked;
@@ -59,6 +59,20 @@ import com.rabbitmq.client.QueueingConsumer.Delivery;
 import com.rabbitmq.client.ShutdownSignalException;
 
 public class DataStoreActiveCleanerTest {
+	
+	private static final String DATA_STORE_PATH;
+	static {
+		try {
+			String clazzPath = DataStore.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath();
+			File clazzFile = new File(clazzPath);
+			DATA_STORE_PATH = clazzFile.getParent() + File.separator;
+		} catch (URISyntaxException e) {
+			// Should never happen.
+			throw new IllegalArgumentException("Can't parse URL", e);
+		}
+	}
+	private static final String DATA_PATH = DATA_STORE_PATH + "data";
+	
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreActiveCleanerTest.class);
 	@Mocked
 	Connection c;
@@ -71,7 +85,6 @@ public class DataStoreActiveCleanerTest {
 
 	private static final String HOST = "localhost";
 	private static final int PORT = 7777;
-	private static final ConcurrentHashMap<Long, java.sql.Connection> H2_CONN_POOL = new ConcurrentHashMap<>();
 
 	private static DataStoreConnector dsConnector;
 	private static DataStoreServer server;
@@ -279,20 +292,36 @@ public class DataStoreActiveCleanerTest {
 
 	@BeforeClass
 	public void beforeClass() throws ClassNotFoundException, SQLException {
-		server = new DataStoreServer(PORT, H2_CONN_POOL);
+		server = new DataStoreServer(PORT);
 		server.start();
 		dsConnector = new DataStoreConnectorImpl("http://" + HOST + ":" + PORT + "/");
 	}
 
 	@BeforeTest
 	public void beforeTest() {
-		H2_CONN_POOL.clear();
 		LOGGER.info("\n\nBEFORE TEST\n");
 	}
 
 	@AfterClass
-	public void afterClass() throws SQLException {
+	public void afterClass() throws Exception {
 		server.close();
+		deleteTestJobData();
+	}
+
+	private void deleteTestJobData() throws IOException {
+		// Check if 'data' directory exists.
+		File dataDir = new File(DATA_PATH);
+		if (Files.exists(dataDir.toPath())) {
+			for (int job = 1; job < 6; job++){
+				LOGGER.info("\n\nDATABASE FILE = {}\n", DataStore.getDbFileName(job) + ".h2.db");
+				Files.deleteIfExists(new File(DataStore.getDbFileName(job) + ".h2.db").toPath());
+				Files.deleteIfExists(new File(DataStore.getDbFileName(job) + ".lock.db").toPath());
+				Files.deleteIfExists(new File(DataStore.getDbFileName(job) + ".trace.db").toPath());
+			}
+		} else {
+			// Directory does not exists so there is no need to remove job data files. Just create directory.
+			Files.createDirectories(dataDir.toPath());
+		}
 	}
 
 	private void addData(long job) throws Exception {
@@ -316,7 +345,7 @@ public class DataStoreActiveCleanerTest {
 		addData(2L);
 		nextAction = CleaningActions.TASK_ACCEPTED;
 
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
@@ -376,7 +405,7 @@ public class DataStoreActiveCleanerTest {
 		addData(2L);
 		nextAction = CleaningActions.TASK_ACCEPTED;
 
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.FAILED, 1, H2_CONN_POOL);
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.FAILED, 1);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
@@ -400,7 +429,7 @@ public class DataStoreActiveCleanerTest {
 		addData(5);
 		nextAction = CleaningActions.REMOVE_JOB_5;
 
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.FAILED, 1, H2_CONN_POOL);
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.FAILED, 1);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
@@ -425,7 +454,7 @@ public class DataStoreActiveCleanerTest {
 		addData(job);
 		nextAction = CleaningActions.REMOVE_JOB_3;
 
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 2, H2_CONN_POOL);
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 2);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
@@ -445,7 +474,7 @@ public class DataStoreActiveCleanerTest {
 		mockObjects();
 		nextAction = CleaningActions.REMOVE_JOB_4;
 
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
@@ -465,7 +494,7 @@ public class DataStoreActiveCleanerTest {
 	public void cleanerNotNeeded() throws Exception {
 		nextAction = CleaningActions.NEVER_RETURN;
 		mockObjects();
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.ALL, 1, H2_CONN_POOL);
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.ALL, 1);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
@@ -483,7 +512,7 @@ public class DataStoreActiveCleanerTest {
 	public void shutdownCleaner() throws Exception {
 		nextAction = CleaningActions.NEVER_RETURN;
 		mockObjects();
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		Thread.sleep(100);
@@ -502,7 +531,7 @@ public class DataStoreActiveCleanerTest {
 	public void shutdownCleanerWithException() throws Exception {
 		nextAction = CleaningActions.NEVER_RETURN;
 		mockObjectsWithConnectionException();
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		Thread.sleep(100);
@@ -521,7 +550,7 @@ public class DataStoreActiveCleanerTest {
 	public void interruptCleaning() throws Exception {
 		nextAction = CleaningActions.INTERRUPT;
 		mockObjects();
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();
@@ -543,7 +572,7 @@ public class DataStoreActiveCleanerTest {
 			LOGGER.info("Test failed:", e);
 			Assert.fail();
 		}
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		try {
@@ -566,7 +595,7 @@ public class DataStoreActiveCleanerTest {
 	public void ioExceptionTest() throws Exception {
 		nextAction = CleaningActions.IO_EXCEPTION;
 		mockObjects();
-		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1, H2_CONN_POOL);
+		DataStoreActiveCleaner cleanerTask = new DataStoreActiveCleaner("", "", LeaveJobOption.NONE, 1);
 		Thread cleaner = new Thread(cleanerTask);
 		cleaner.start();
 		cleaner.join();

@@ -20,8 +20,6 @@
 package pl.nask.hsn2;
 
 import java.io.IOException;
-import java.sql.SQLException;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -65,7 +63,6 @@ public class DataStoreActiveCleaner implements Runnable {
 	 * RabbitMQ connection.
 	 */
 	private Connection rbtConnection;
-	private final ConcurrentHashMap<Long, java.sql.Connection> h2Connections;
 
 	/**
 	 * Creates new active cleaner.
@@ -82,8 +79,7 @@ public class DataStoreActiveCleaner implements Runnable {
 	 * @param activeJobsSet
 	 */
 	public DataStoreActiveCleaner(String rbtServerHostname, String rbtNotifyExchangeName, LeaveJobOption leaveJobValue,
-			int cleaningThreadsNumber, ConcurrentHashMap<Long, java.sql.Connection> h2ConnectionsPool) {
-		h2Connections = h2ConnectionsPool;
+			int cleaningThreadsNumber) {
 		rbtHostName = rbtServerHostname;
 		rbtNotifyExchName = rbtNotifyExchangeName;
 		leaveJob = leaveJobValue;
@@ -158,21 +154,14 @@ public class DataStoreActiveCleaner implements Runnable {
 		if (actualCleaningJobs.contains(jobId)) {
 			LOGGER.info("Job data clean request ignored. Already cleaning. (jobId={})", jobId);
 		} else {
-			java.sql.Connection c = h2Connections.remove(jobId);
-			if (c == null) {
+			if (!DataStore.isDbFileExists(jobId)) {
 				LOGGER.info("Job data clean request ignored. Job id not found in active jobs set. (jobId={})", jobId);
 			} else {
-				try {
-					c.close();
-					if (isJobStatusEligibleToClean(jobStatus)) {
-						LOGGER.info("Job data clean request added. (jobId={})", jobId);
-						executor.execute(new DataStoreCleanSingleJob(actualCleaningJobs, jobId));
-					} else {
-						LOGGER.info("Job data clean request ignored. Job status not eligible. (jobId={}, status={})", jobId,
-								jobStatus.toString());
-					}
-				} catch (SQLException e) {
-					LOGGER.warn("Could not close H2 Database connection.", e);
+				if (isJobStatusEligibleToClean(jobStatus)) {
+					LOGGER.info("Job data clean request added. (jobId={})", jobId);
+					executor.execute(new DataStoreCleanSingleJob(actualCleaningJobs, jobId));
+				} else {
+					LOGGER.info("Job data clean request ignored. Job status not eligible. (jobId={}, status={})", jobId, jobStatus.toString());
 				}
 			}
 		}
