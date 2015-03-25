@@ -77,6 +77,7 @@ public class DataStoreTest {
 	@AfterClass
 	public void afterClass() throws Exception {
 		server.close();
+		Thread.sleep(2000);
 		deleteTestJobData();
 	}
 

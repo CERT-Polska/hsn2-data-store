@@ -73,7 +73,18 @@
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>2.14.1</version>
 			</plugin>
-		</plugins>
+                        <plugin>
+                                <artifactId>maven-source-plugin</artifactId>
+                                <executions>
+                                        <execution>
+                                                <id>attach-sources</id>
+                                                <goals>
+                                                        <goal>jar</goal>
+                                                </goals>
+                                        </execution>
+                                </executions>
+                        </plugin>
+                </plugins>
 	</build>
 
 	<profiles>
