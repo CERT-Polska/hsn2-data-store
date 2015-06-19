@@ -1,0 +1,14 @@
+Source: hsn2-data-store
+Section: unknown
+Priority: optional
+Maintainer: CERT Polska <info@cert.pl>
+Build-Depends: debhelper (>= 8.0.0), maven
+Standards-Version: 3.9.3
+
+Package: hsn2-data-store
+Architecture: all
+Depends: ${misc:Depends}, java-wrappers
+Homepage: http://www.honeyspider.net
+Description: HSN 2.0 Data Store
+ HSN 2.0 Data Store keeps all files downloaded
+ by the Web Client.

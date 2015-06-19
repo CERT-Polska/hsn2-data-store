@@ -1,0 +1,111 @@
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides:               hsn2-data-store
+# Required-Start:         $remote_fs
+# Required-Stop:          $remote_fs
+# Default-Start:          2 3 4 5
+# Default-Stop:           0 1 6
+# Short-Description:      Start/Stop the HSN2 Data Store
+# Description:            Start/Stop the HSN2 Data Store daemon.
+### END INIT INFO
+
+
+NAME="HSN2 Data Store"
+HSN2_COMPONENT="data-store"
+
+HSN2_COMPONENT_HOME="/usr/share/hsn2/$HSN2_COMPONENT"
+PIDFILE="/var/run/hsn2-$HSN2_COMPONENT.pid"
+
+HSN2_COMPONENT_PARAMS=""
+
+MAINCLASS="pl.nask.hsn2.DataStore"
+
+HSN2_JVM_PARAMS="-Xmx90m -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.port=1103"
+
+JSVCBIN=`which jsvc`
+
+. /lib/lsb/init-functions
+
+# Include the wrappers utility script
+. /usr/lib/java-wrappers/java-wrappers.sh
+
+# We need openjdk runtime.
+require_java_runtime openjdk
+
+find_jars commons-io slf4j-log4j12 slf4j-api log4j-1.2 commons-daemon
+
+use_jsvc_wrapper () {
+	#log_daemon_msg "using jsvc..."
+	case "$1" in
+		start)
+			log_daemon_msg "Starting" "$NAME"
+			$JSVCBIN -home $JAVA_HOME -wait 30 -pidfile ${PIDFILE} $HSN2_JVM_PARAMS -cp $JAVA_CLASSPATH:$HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $MAINCLASS $HSN2_COMPONENT_PARAMS
+			
+			log_end_msg $?
+			return $?
+			;;
+		stop)
+			log_daemon_msg "Stopping" "$NAME"
+			$JSVCBIN -home $JAVA_HOME -stop -pidfile ${PIDFILE} $HSN2_JVM_PARAMS -cp $JAVA_CLASSPATH:$HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $MAINCLASS 
+
+			log_end_msg $?
+			return $?
+			;;
+		status)
+			status_of_proc -p $PIDFILE $JSVCBIN "$NAME" && return 0 || return $?
+			;;
+	esac
+		
+return 0
+}
+
+
+use_start_stop_daemon() {
+	log_daemon_msg "using start-stop-daemon..."
+	case "$1" in
+	start)
+		log_daemon_msg "Starting" "$NAME"
+		cd "$HSN2_COMPONENT_HOME"
+		# workaround (see redmine #6587, #6324)
+		start-stop-daemon --start --quiet --oknodo --background --make-pidfile --pidfile $PIDFILE --exec /usr/bin/java -- $HSN2_JVM_PARAMS -jar $HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $HSN2_COMPONENT_PARAMS
+		sleep 5
+		PID=`cat $PIDFILE`
+		TEST=`ps ax | grep $PID | grep java | sed -e 's/^ *//' | cut -d' ' -f1`
+		if [ -n "$TEST" ]; then
+		# original code
+		#if start-stop-daemon --start --quiet --oknodo --background --make-pidfile --pidfile $PIDFILE --exec /usr/bin/java -- -jar $HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $HSN2_COMPONENT_PARAMS; then
+			log_end_msg 0
+		else
+			log_end_msg 1
+			echo "" > $PIDFILE
+			return 1
+		fi
+		;;
+
+	stop)
+		log_daemon_msg "Stopping" "$NAME"
+		if start-stop-daemon --stop --quiet --oknodo --pidfile $PIDFILE; then
+			log_end_msg 0
+			echo "" > $PIDFILE
+			#rm -f $PIDFILE
+		else
+			log_end_msg 1
+		fi
+		;;
+
+	status)
+		status_of_proc -p $PIDFILE "$JAVA" "$NAME" && return 0 || return $?
+		;;
+	esac
+return 0
+
+}
+	
+if [ -z "$JSVCBIN"  -o -z "$JAVA_HOME" ]; then
+	use_start_stop_daemon $@
+else
+	use_jsvc_wrapper $@
+fi
+
+exit $?
