@@ -1,16 +1,17 @@
 
-COMPONENT=hsn2-data-store
+COMPONENT=data-store
+FULL_COMPONENT=hsn2-${COMPONENT}
 
-all:	${COMPONENT}-package
+all:	${FULL_COMPONENT}-package
 
-clean:	${COMPONENT}-package-clean
+clean:	${FULL_COMPONENT}-package-clean
 
-${COMPONENT}-package:
-	mvn clean install -U -Pbundle
-	mkdir -p build/data-store
-	tar xzf target/${COMPONENT}-2.0.0-SNAPSHOT.tar.gz -C build/data-store
+${FULL_COMPONENT}-package:
+	mvn clean install -U -Pbundle -Dmaven.test.skip
+	mkdir -p build/${COMPONENT}
+	tar xzf target/${FULL_COMPONENT}-2.0.0-SNAPSHOT.tar.gz -C build/${COMPONENT}
 
-${COMPONENT}-package-clean:
+${FULL_COMPONENT}-package-clean:
 	rm -rf build
 
 build-local:
