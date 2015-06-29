@@ -21,6 +21,8 @@ HSN2_COMPONENT_PARAMS="-rs 127.0.0.1"
 
 MAINCLASS="pl.nask.hsn2.DataStore"
 
+HSN2_CLASSPATH=$HSN2_COMPONENT_HOME/lib:$HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar
+
 HSN2_JVM_PARAMS="-Xmx90m -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.port=1103"
 
 JSVCBIN=`which jsvc`
@@ -33,21 +35,20 @@ JSVCBIN=`which jsvc`
 # We need openjdk runtime.
 require_java_runtime openjdk
 
-# find_jars commons-io slf4j-log4j12 slf4j-api log4j-1.2 commons-daemon
 
 use_jsvc_wrapper () {
 	#log_daemon_msg "using jsvc..."
 	case "$1" in
 		start)
 			log_daemon_msg "Starting" "$NAME"
-			$JSVCBIN -home $JAVA_HOME -wait 30 -pidfile ${PIDFILE} $HSN2_JVM_PARAMS -cp $JAVA_CLASSPATH:$HSN2_COMPONENT_HOME/lib:$HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $MAINCLASS $HSN2_COMPONENT_PARAMS
+			$JSVCBIN -home $JAVA_HOME -wait 30 -pidfile ${PIDFILE} $HSN2_JVM_PARAMS -cp $JAVA_CLASSPATH:$HSN2_CLASSPATH $MAINCLASS $HSN2_COMPONENT_PARAMS
 			
 			log_end_msg $?
 			return $?
 			;;
 		stop)
 			log_daemon_msg "Stopping" "$NAME"
-			$JSVCBIN -home $JAVA_HOME -stop -pidfile ${PIDFILE} $HSN2_JVM_PARAMS -cp $JAVA_CLASSPATH:$HSN2_COMPONENT_HOME/lib:$HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $MAINCLASS 
+			$JSVCBIN -home $JAVA_HOME -stop -pidfile ${PIDFILE} $HSN2_JVM_PARAMS -cp $JAVA_CLASSPATH:$HSN2_CLASSPATH $MAINCLASS 
 
 			log_end_msg $?
 			return $?
@@ -68,13 +69,13 @@ use_start_stop_daemon() {
 		log_daemon_msg "Starting" "$NAME"
 		cd "$HSN2_COMPONENT_HOME"
 		# workaround (see redmine #6587, #6324)
-		start-stop-daemon --start --quiet --oknodo --background --make-pidfile --pidfile $PIDFILE --exec /usr/bin/java -- $HSN2_JVM_PARAMS -jar $HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $HSN2_COMPONENT_PARAMS
+		start-stop-daemon --start --quiet --oknodo --background --make-pidfile --pidfile $PIDFILE --exec /usr/bin/java -- $HSN2_JVM_PARAMS -jar $HSN2_CLASSPATH $HSN2_COMPONENT_PARAMS
 		sleep 5
 		PID=`cat $PIDFILE`
 		TEST=`ps ax | grep $PID | grep java | sed -e 's/^ *//' | cut -d' ' -f1`
 		if [ -n "$TEST" ]; then
 		# original code
-		#if start-stop-daemon --start --quiet --oknodo --background --make-pidfile --pidfile $PIDFILE --exec /usr/bin/java -- -jar $HSN2_COMPONENT_HOME/hsn2-$HSN2_COMPONENT.jar $HSN2_COMPONENT_PARAMS; then
+		#if start-stop-daemon --start --quiet --oknodo --background --make-pidfile --pidfile $PIDFILE --exec /usr/bin/java -- -jar $HSN2_CLASSPATH $HSN2_COMPONENT_PARAMS; then
 			log_end_msg 0
 		else
 			log_end_msg 1

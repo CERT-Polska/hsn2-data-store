@@ -1,5 +1,5 @@
 Source: hsn2-data-store
-Section: unknown
+Section: java
 Priority: optional
 Maintainer: CERT Polska <info@cert.pl>
 Build-Depends: debhelper (>= 8.0.0), maven
