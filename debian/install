@@ -1,1 +1,2 @@
 build/data-store /usr/share/hsn2/
+data-store.conf /etc/hsn2/
