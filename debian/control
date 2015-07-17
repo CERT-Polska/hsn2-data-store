@@ -7,7 +7,7 @@ Standards-Version: 3.9.3
 
 Package: hsn2-data-store
 Architecture: all
-Depends: ${misc:Depends}, java-wrappers, openjdk-7-jre, jsvc
+Depends: ${misc:Depends}, hsn2-commons-debian, java-wrappers, openjdk-7-jre, jsvc
 Homepage: http://www.honeyspider.net
 Description: HSN 2.0 Data Store
  A simple database that can store arbitrary binary data.
