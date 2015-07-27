@@ -17,7 +17,7 @@ CONFFILE=/etc/hsn2/data-store.conf
 
 HSN2_COMPONENT_HOME="/usr/share/hsn2/$HSN2_COMPONENT"
 
-HSN2_JMX_PORT=1103
+#HSN2_JMX_PORT=1103
 HSN2_JVM_PARAMS_MEMORY=-Xmx90m
 
 . /lib/hsn2/init-functions-java
