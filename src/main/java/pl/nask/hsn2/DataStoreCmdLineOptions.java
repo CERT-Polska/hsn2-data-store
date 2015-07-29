@@ -33,6 +33,7 @@ public class DataStoreCmdLineOptions {
 
 	private final Options options = new Options();
 
+	private static final String DEFAULT_LOG_LEVEL = "DEBUG";
 	private static final int DEFAULT_PORT = 8080;
 	private static final String DEFAULT_RBT_HOSTNAME = "localhost";
 	private static final String DEFAULT_RBT_NOTIFY_EXCH = "notify";
@@ -43,6 +44,8 @@ public class DataStoreCmdLineOptions {
 	private String rbtNotifyExch;
 	private LeaveJobOption leaveData;
 	private int cleaningThreadsNumber;
+
+	private CommandLine cmd;
 
 	public DataStoreCmdLineOptions(String[] args) throws ParseException {
 		initOptions();
@@ -56,6 +59,12 @@ public class DataStoreCmdLineOptions {
 		OptionBuilder.withDescription("Prints this help page.");
 		OptionBuilder.withLongOpt("help");
 		options.addOption(OptionBuilder.create("h"));
+
+		OptionBuilder.withDescription("use given level for log. (Default: " + DEFAULT_LOG_LEVEL + ")");
+		OptionBuilder.withLongOpt("logLevel");
+		OptionBuilder.hasArgs(1);
+		OptionBuilder.withArgName("level");
+		options.addOption(OptionBuilder.create("ll"));
 
 		OptionBuilder.withDescription("Listening port. (Default: " + DEFAULT_PORT + ")");
 		OptionBuilder.withLongOpt("port");
@@ -88,6 +97,14 @@ public class DataStoreCmdLineOptions {
 		options.addOption(OptionBuilder.create("ct"));
 	}
 
+	public CommandLine getCmd() {
+		return cmd;
+	}
+
+	public void setCmd(CommandLine cmd) {
+		this.cmd = cmd;
+	}
+
 	/**
 	 * Parse arguments and set options.
 	 * 
@@ -96,7 +113,7 @@ public class DataStoreCmdLineOptions {
 	 */
 	private void parseParams(String[] args) throws ParseException {
 		// Parse arguments.
-		CommandLine cmd = new PosixParser().parse(options, args);
+		setCmd(new PosixParser().parse(options, args));
 
 		// Check for options.
 		if (cmd.hasOption("help")) {

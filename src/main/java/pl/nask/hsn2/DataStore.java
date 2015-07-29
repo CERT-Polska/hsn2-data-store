@@ -29,6 +29,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.sql.SQLException;
 
+import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.daemon.Daemon;
 import org.apache.commons.daemon.DaemonContext;
@@ -37,8 +38,13 @@ import org.apache.commons.daemon.DaemonInitException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pl.nask.hsn2.logger.LoggerForLog4j;
+import pl.nask.hsn2.logger.LoggerManager;
+
 public final class DataStore implements Daemon {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStore.class);
+	private static LoggerManager loggerManager = LoggerForLog4j.getInstance();
+
 	private static final String DATA_STORE_PATH;
 	static {
 		try {
@@ -100,6 +106,7 @@ public final class DataStore implements Daemon {
 		DataStoreCmdLineOptions opt = null;
 		try {
 			opt = new DataStoreCmdLineOptions(context.getArguments());
+			initLogging(opt.getCmd());
 		} catch (ParseException e) {
 			LOGGER.error("Invalid command line options.\n{}", e);
 			throw new DaemonInitException("Could not initialize daemon.", e);
@@ -108,8 +115,7 @@ public final class DataStore implements Daemon {
 		// Initialize H2 database.
 		try {
 			Class.forName("org.h2.Driver");
-			
-			
+
 			// If help is printed we don't want to start server, only terminate app.
 			String rbtHostName = opt.getRbtHostname();
 			if (rbtHostName != null) {
@@ -123,6 +129,12 @@ public final class DataStore implements Daemon {
 			}
 		} catch (ClassNotFoundException e1) {
 			throw new DaemonInitException("H2 database initialization, failed.", e1);
+		}
+	}
+
+	private void initLogging(CommandLine cmd) {
+		if (cmd.hasOption("logLevel")) {
+			loggerManager.setLogLevel(cmd.getOptionValue("logLevel"));
 		}
 	}
 
@@ -145,17 +157,17 @@ public final class DataStore implements Daemon {
 	@Override
 	public void destroy() {
 		File data = new File(DATA_PATH);
-		for (File file : data.listFiles()){
+		for (File file : data.listFiles()) {
 			file.delete();
 		}
 	}
-	
+
 	public static String getDbFileName(long jobId) {
 		return DATA_PATH + File.separator + "data-store-" + jobId;
 	}
-	
+
 	public static boolean isDbFileExists(long jobId) {
-		File dbFile = new File(DataStore.getDbFileName(jobId)+".h2.db");
+		File dbFile = new File(DataStore.getDbFileName(jobId) + ".h2.db");
 		return dbFile.exists();
 	}
 }

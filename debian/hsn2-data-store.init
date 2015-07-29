@@ -23,9 +23,10 @@ HSN2_JVM_PARAMS_MEMORY=-Xmx90m
 . /lib/hsn2/init-functions-java
 
 prepare_start() {
-	HSN2_COMPONENT_PARAMS="-rs $BROKER_ADDRESS"
+	HSN2_COMPONENT_PARAMS="-rs $BROKER_ADDRESS \
+		-ll $LOG_LEVEL"
 }
-	
+
 choose_java_service_action $@
 
 exit $?
