@@ -1,8 +1,8 @@
 /*
  * Copyright (c) NASK, NCSC
- * 
+ *
  * This file is part of HoneySpider Network 2.0.
- * 
+ *
  * This is a free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -62,7 +62,7 @@ public class DataStoreActiveCleaner implements Runnable {
 	 * data has been cleared.
 	 */
 	private final ConcurrentSkipListSet<Long> actualCleaningJobs = new ConcurrentSkipListSet<>();
-	private final FixedSizeLinkedHashMap<Long,String> finishedJobs = new FixedSizeLinkedHashMap<>(20); 
+	private final FixedSizeLinkedHashMap<Long,String> finishedJobs = new FixedSizeLinkedHashMap<>(20);
 	private final ExecutorService executor;
 	/**
 	 * RabbitMQ connection.
@@ -71,7 +71,7 @@ public class DataStoreActiveCleaner implements Runnable {
 
 	/**
 	 * Creates new active cleaner.
-	 * 
+	 *
 	 * @param rbtServerHostname
 	 *            RabbitMQ server host name.
 	 * @param rbtNotifyExchangeName
@@ -97,7 +97,7 @@ public class DataStoreActiveCleaner implements Runnable {
 	 * Main execution method.
 	 */
 	@Override
-	public void run() {
+	public final void run() {
 		LOGGER.info("Active cleaner started.");
 		// Check if cleaner is needed.
 		if (leaveJob == LeaveJobOption.ALL) {
@@ -148,13 +148,13 @@ public class DataStoreActiveCleaner implements Runnable {
 	}
 	public static void main(String[] args) {
 		DataStoreActiveCleaner d = new DataStoreActiveCleaner(null, null, null, 1);
-		
+
 		d.startJobDataRemoving(1, JobStatus.FAILED);
 	}
 	/**
-	 * Starts new cleaning task if eligible (according to leaveJob option) 
+	 * Starts new cleaning task if eligible (according to leaveJob option)
 	 * and run cleaning for last 20 jobs if needed.
-	 * 
+	 *
 	 * @param newJobId
 	 *            Id of job to clean.
 	 * @param jobStatus
@@ -179,14 +179,14 @@ public class DataStoreActiveCleaner implements Runnable {
 			} else {
 				LOGGER.trace("Job data clean request ignored. Job status not eligible. (jobId={}, status={})", oldJobId, jobStatus.toString());
 			}
-		
+
 		}
 	}
 
 	/**
 	 * If {@code leaveJob} is set to NONE - all data will be erased. If {@code leaveJob} is set to FAILED, all data will
 	 * be erased but failed jobs will not be erased.
-	 * 
+	 *
 	 * @param jobStatus
 	 *            Status of job to check.
 	 * @return {@code True} if job data should be erased, {@code false} otherwise.
@@ -198,7 +198,7 @@ public class DataStoreActiveCleaner implements Runnable {
 
 	/**
 	 * Initialize RabbitMQ connection.
-	 * 
+	 *
 	 * @return RabbitMQ consumer.
 	 * @throws IOException
 	 *             When there's some connection issues.
@@ -220,7 +220,7 @@ public class DataStoreActiveCleaner implements Runnable {
 	 * Cleaner shutdown request. It will not stop ongoing clean tasks but will take no new tasks and then ends when all
 	 * actual tasks are completed.
 	 */
-	public void shutdown() {
+	public final void shutdown() {
 		try {
 			rbtConnection.close();
 		} catch (IOException e) {
@@ -228,16 +228,16 @@ public class DataStoreActiveCleaner implements Runnable {
 		}
 		executor.shutdown();
 	}
-	
-	private class FixedSizeLinkedHashMap<T,V> extends LinkedHashMap<T,V>{
+
+	private static class FixedSizeLinkedHashMap<T,V> extends LinkedHashMap<T,V>{
 		private static final long serialVersionUID = -2000072674384966125L;
 		private int maxSize;
-		
+
 		public FixedSizeLinkedHashMap(int maxSize) {
 			super(maxSize + 1, 1, true);
 			this.maxSize = maxSize;
 		}
-		
+
 		@Override
 		protected boolean removeEldestEntry(java.util.Map.Entry<T, V> eldest) {
 			return maxSize < this.size();

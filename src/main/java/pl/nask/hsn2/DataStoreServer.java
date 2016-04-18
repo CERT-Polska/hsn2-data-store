@@ -1,8 +1,8 @@
 /*
  * Copyright (c) NASK, NCSC
- * 
+ *
  * This file is part of HoneySpider Network 2.0.
- * 
+ *
  * This is a free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -37,12 +37,12 @@ public class DataStoreServer {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreServer.class);
 	private HttpServer server;
 
-	public DataStoreServer(int port) throws ClassNotFoundException {
+	public DataStoreServer(int port) {
 		InetSocketAddress addr = new InetSocketAddress(port);
 		try {
 			server = HttpServer.create(addr, 0);
 		} catch (IOException e) {
-			throw new RuntimeException("Server error.", e);
+			throw new IllegalStateException("Server error.", e);
 		}
 		server.createContext("/", new DefaultHandler());
 		server.createContext("/data", new DataHandler());
@@ -50,11 +50,11 @@ public class DataStoreServer {
 		LOGGER.info("Server is listening on port {}", port);
 	}
 
-	public void start() {
+	public final void start() {
 		server.start();
 	}
 
-	public void close() throws SQLException {
+	public final void close() throws SQLException {
 		server.stop(0);
 		LOGGER.info("Server is stopped!");
 	}

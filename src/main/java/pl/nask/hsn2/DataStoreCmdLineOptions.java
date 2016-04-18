@@ -1,8 +1,8 @@
 /*
  * Copyright (c) NASK, NCSC
- * 
+ *
  * This file is part of HoneySpider Network 2.0.
- * 
+ *
  * This is a free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -97,17 +97,17 @@ public class DataStoreCmdLineOptions {
 		options.addOption(OptionBuilder.create("ct"));
 	}
 
-	public CommandLine getCmd() {
+	public final CommandLine getCmd() {
 		return cmd;
 	}
 
-	public void setCmd(CommandLine cmd) {
+	public final void setCmd(CommandLine cmd) {
 		this.cmd = cmd;
 	}
 
 	/**
 	 * Parse arguments and set options.
-	 * 
+	 *
 	 * @param args
 	 * @throws ParseException
 	 */
@@ -190,23 +190,23 @@ public class DataStoreCmdLineOptions {
 		}
 	}
 
-	public int getPort() {
+	public final int getPort() {
 		return port;
 	}
 
-	public String getRbtHostname() {
+	public final String getRbtHostname() {
 		return rbtHostname;
 	}
 
-	public String getRbtNotifyExch() {
+	public final String getRbtNotifyExch() {
 		return rbtNotifyExch;
 	}
 
-	public LeaveJobOption getLeaveData() {
+	public final LeaveJobOption getLeaveData() {
 		return leaveData;
 	}
 
-	public int getCleaningThreadsNumber() {
+	public final int getCleaningThreadsNumber() {
 		return cleaningThreadsNumber;
 	}
 }

@@ -1,8 +1,8 @@
 /*
  * Copyright (c) NASK, NCSC
- * 
+ *
  * This file is part of HoneySpider Network 2.0.
- * 
+ *
  * This is a free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -30,7 +30,7 @@ import com.sun.net.httpserver.HttpExchange;
 public class DefaultHandler extends AbstractHandler {
 
 	@Override
-	protected void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException {
+	protected final void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException {
 		String msg = "";
 		int responseCode = -1;
 

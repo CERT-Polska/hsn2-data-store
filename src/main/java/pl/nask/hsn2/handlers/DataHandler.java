@@ -1,8 +1,8 @@
 /*
  * Copyright (c) NASK, NCSC
- * 
+ *
  * This file is part of HoneySpider Network 2.0.
- * 
+ *
  * This is a free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -53,7 +53,7 @@ public class DataHandler extends AbstractHandler {
 	}
 
 	@Override
-	protected void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException {
+	protected final void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException {
 		String[] args = exchange.getRequestURI().getPath().split("/");
 		try {
 			if ("GET".equalsIgnoreCase(requestMethod)) {
@@ -100,7 +100,7 @@ public class DataHandler extends AbstractHandler {
 		long newId = DataStore.updateIdCount();
 
 		try(Connection h2Connection = createNewDatabaseIfNeeded(jobId)){
-	
+
 			// Add data to database.
 			String sqlQuery = "INSERT INTO JOB_DATA VALUES(?, ?)";
 			try (PreparedStatement statement = h2Connection.prepareStatement(sqlQuery)) {
@@ -112,20 +112,19 @@ public class DataHandler extends AbstractHandler {
 				}
 			}
 		}
-		
+
 		return newId;
 	}
-	
+
 	private Connection connect(long jobId) throws SQLException{
-		Connection h2Connection = DriverManager.getConnection("jdbc:h2:" + DataStore.getDbFileName(jobId) + ";LOG=0", "sa", H2_DB_PASSWORD);
-		return h2Connection;
+		return DriverManager.getConnection("jdbc:h2:" + DataStore.getDbFileName(jobId) + ";LOG=0", "sa", H2_DB_PASSWORD); //NOPMD
 	}
-	
+
 	private synchronized Connection createNewDatabaseIfNeeded(long jobId) throws SQLException {
 		// Create new database.
 		boolean isDbExistsBefore = DataStore.isDbFileExists(jobId);
 		Connection h2Connection = connect(jobId);
-		
+
 		if(!isDbExistsBefore){
 			// Create new table.
 			try (Statement s = h2Connection.createStatement()) {
@@ -134,13 +133,13 @@ public class DataHandler extends AbstractHandler {
 				s.execute("ALTER TABLE JOB_DATA ADD UNIQUE (ID)");
 			}
 		}
-		
+
 		return h2Connection;
 	}
 
 	private void handleGet(HttpExchange exchange, long jobId, long entryId) throws IOException, JobNotFoundException,
 			EntryNotFoundException, SQLException {
-		
+
 		LOGGER.info("Get method. {}", exchange.getRequestURI().getPath());
 		if(!DataStore.isDbFileExists(jobId)){
 			throw new JobNotFoundException("Job not found (id=" + jobId + ")");
@@ -149,7 +148,7 @@ public class DataHandler extends AbstractHandler {
 				Connection h2Connection = connect(jobId);
 				InputStream is = getData(h2Connection, entryId);
 			) {
-			
+
 			Headers headers = exchange.getResponseHeaders();
 			headers.set("Content-Type", "application/octet-stream");
 
@@ -163,7 +162,7 @@ public class DataHandler extends AbstractHandler {
 	/**
 	 * Gets data for given job and entry id. If more that one data is found it will return only first item (such
 	 * situation should not happen though).
-	 * 
+	 *
 	 * @param jobId
 	 *            Job id.
 	 * @param entryId
@@ -185,7 +184,7 @@ public class DataHandler extends AbstractHandler {
 				}
 			}
 		}
-		
+
 		if (data == null) {
 			throw new SQLException("No data found.");
 		} else {
