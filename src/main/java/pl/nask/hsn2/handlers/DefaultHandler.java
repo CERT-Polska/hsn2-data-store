@@ -1,8 +1,8 @@
 /*
  * Copyright (c) NASK, NCSC
- * 
- * This file is part of HoneySpider Network 2.0.
- * 
+ *
+ * This file is part of HoneySpider Network 2.1.
+ *
  * This is a free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -22,23 +22,25 @@ package pl.nask.hsn2.handlers;
 import java.io.IOException;
 import java.net.URI;
 
+import org.apache.commons.httpclient.HttpStatus;
+
 import com.sun.net.httpserver.HttpExchange;
 
-public class DefaultHandler extends AbstractHandler{
-	
+@SuppressWarnings("restriction")
+public class DefaultHandler extends AbstractHandler {
+
 	@Override
-	protected void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException {
+	protected final void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException {
 		String msg = "";
 		int responseCode = -1;
-		
-		if("/".equals(uri.getPath()) && "GET".equalsIgnoreCase(requestMethod)){
+
+		if ("/".equals(uri.getPath()) && "GET".equalsIgnoreCase(requestMethod)) {
 			msg = "DataStore ok!";
-			responseCode = 200;
-		}
-		else{
+			responseCode = HttpStatus.SC_OK;
+		} else {
 			msg = "Unexpected request!";
-			LOGGER.error(msg + " {}",exchange.getRequestURI());
-			responseCode = 403;
+			LOGGER.error(msg + " {}", exchange.getRequestURI());
+			responseCode = HttpStatus.SC_FORBIDDEN;
 		}
 		exchange.sendResponseHeaders(responseCode, msg.length());
 		exchange.getResponseBody().write(msg.getBytes());

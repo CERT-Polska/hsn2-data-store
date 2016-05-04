@@ -1,0 +1,32 @@
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides:               hsn2-data-store
+# Required-Start:         $remote_fs
+# Required-Stop:          $remote_fs
+# Default-Start:          2 3 4 5
+# Default-Stop:           0 1 6
+# Short-Description:      Start/Stop the HSN2 Data Store
+# Description:            Start/Stop the HSN2 Data Store daemon.
+### END INIT INFO
+
+NAME="HSN2 Data Store"
+HSN2_COMPONENT="data-store"
+MAINCLASS="pl.nask.hsn2.DataStore"
+CONFFILE=/etc/hsn2/data-store.conf
+
+HSN2_COMPONENT_HOME="/usr/share/hsn2/$HSN2_COMPONENT"
+
+#HSN2_JMX_PORT=1103
+HSN2_JVM_PARAMS_MEMORY=-Xmx90m
+
+. /lib/hsn2/init-functions-java
+
+prepare_start() {
+	HSN2_COMPONENT_PARAMS="-rs $BROKER_ADDRESS \
+		-ll $LOG_LEVEL"
+}
+
+choose_java_service_action $@
+
+exit $?

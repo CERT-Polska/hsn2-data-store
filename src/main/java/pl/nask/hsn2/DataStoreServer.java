@@ -1,8 +1,8 @@
 /*
  * Copyright (c) NASK, NCSC
- * 
- * This file is part of HoneySpider Network 2.0.
- * 
+ *
+ * This file is part of HoneySpider Network 2.1.
+ *
  * This is a free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -21,6 +21,7 @@ package pl.nask.hsn2;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.sql.SQLException;
 import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
@@ -31,8 +32,8 @@ import pl.nask.hsn2.handlers.DefaultHandler;
 
 import com.sun.net.httpserver.HttpServer;
 
-public class DataStoreServer{
-
+@SuppressWarnings("restriction")
+public class DataStoreServer {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreServer.class);
 	private HttpServer server;
 
@@ -41,20 +42,20 @@ public class DataStoreServer{
 		try {
 			server = HttpServer.create(addr, 0);
 		} catch (IOException e) {
-			throw new RuntimeException("Server error.",e);
+			throw new IllegalStateException("Server error.", e);
 		}
 		server.createContext("/", new DefaultHandler());
-	    server.createContext("/data", new DataHandler());
-	    server.setExecutor(Executors.newCachedThreadPool());
-	    LOGGER.info("Server is listening on port {}", port);
+		server.createContext("/data", new DataHandler());
+		server.setExecutor(Executors.newCachedThreadPool());
+		LOGGER.info("Server is listening on port {}", port);
 	}
 
-	public void start() {
-	    server.start();
+	public final void start() {
+		server.start();
 	}
 
-	public void close(){
+	public final void close() throws SQLException {
 		server.stop(0);
-		 LOGGER.info("Server is stopped!");
+		LOGGER.info("Server is stopped!");
 	}
 }

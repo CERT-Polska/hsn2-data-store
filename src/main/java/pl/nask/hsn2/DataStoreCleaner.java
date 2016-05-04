@@ -1,8 +1,8 @@
 /*
  * Copyright (c) NASK, NCSC
- * 
- * This file is part of HoneySpider Network 2.0.
- * 
+ *
+ * This file is part of HoneySpider Network 2.1.
+ *
  * This is a free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -30,7 +30,7 @@ import pl.nask.hsn2.exceptions.InvalidArgument;
  * Application which can be run from command line and which will delete from
  * Data Store old job files.
  */
-public class DataStoreCleaner {
+public final class DataStoreCleaner {
 	private static final Logger LOGGER = LoggerFactory.getLogger(DataStoreCleaner.class);
 	public static final String DATA_PATH = DataStore.getDataPath();
 	private long jobNumberArgSet = -1;
@@ -50,7 +50,7 @@ public class DataStoreCleaner {
 			dsc.clean();
 		} catch (Exception e) {
 			LOGGER.info(e.getMessage());
-			System.out.println(HELP_MSG);
+			System.out.println(HELP_MSG); //NOPMD
 		}
 	}
 
@@ -90,7 +90,7 @@ public class DataStoreCleaner {
 			}
 		}
 		if (helpArgSet) {
-			System.out.println(HELP_MSG);
+			System.out.println(HELP_MSG); //NOPMD
 		}
 	}
 
@@ -116,7 +116,7 @@ public class DataStoreCleaner {
 		}
 	}
 
-	private void deleteNonEmptyDirectory(File dir) {
+	public static void deleteNonEmptyDirectory(File dir) {
 		LOGGER.debug("Non empty file/dir deleting: {}", dir.getAbsolutePath());
 		if (dir.isDirectory()) {
 			File[] filesInside = dir.listFiles();

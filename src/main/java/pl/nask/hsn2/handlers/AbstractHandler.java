@@ -1,8 +1,8 @@
 /*
  * Copyright (c) NASK, NCSC
- * 
- * This file is part of HoneySpider Network 2.0.
- * 
+ *
+ * This file is part of HoneySpider Network 2.1.
+ *
  * This is a free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
 
+import org.apache.commons.httpclient.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,50 +31,49 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
+@SuppressWarnings("restriction")
 public abstract class AbstractHandler implements HttpHandler {
 
 	protected static final Logger LOGGER = LoggerFactory.getLogger(HttpHandler.class);
 
 	@Override
-	public void handle(HttpExchange exchange) throws IOException {
+	public final void handle(HttpExchange exchange) throws IOException {
 		Headers headers = exchange.getResponseHeaders();
 		headers.set("Content-Type", "text/plain");
 		headers.set("Server", "HSN2-DataStore");
-		
+
 		URI uri = exchange.getRequestURI();
 		String requestMethod = exchange.getRequestMethod();
-		
-		try{
+
+		try {
 			handleRequest(exchange, uri, requestMethod);
-		} 
-		catch (Exception e) {
-			handleError(exchange, 500, e);
-		}
-		finally{
+		} catch (Exception e) {
+			handleError(exchange, HttpStatus.SC_INTERNAL_SERVER_ERROR, e);
+		} finally {
 			OutputStream responseBody = exchange.getResponseBody();
-			if(responseBody != null){
+			if (responseBody != null) {
 				try {
 					responseBody.close();
 				} catch (IOException e) {
-					LOGGER.error(e.getMessage(),e);
+					LOGGER.error(e.getMessage(), e);
 				}
 			}
 		}
 	}
 
-	protected void handleError(HttpExchange exchange, int httpCode, String msg, Exception e) {
+	protected final void handleError(HttpExchange exchange, int httpCode, String msg, Exception e) {
 		LOGGER.error(msg, e);
 		try {
 			exchange.sendResponseHeaders(httpCode, msg.length());
 			exchange.getResponseBody().write(msg.getBytes());
 		} catch (IOException e1) {
-			LOGGER.error(e1.getMessage(),e1);
+			LOGGER.error(e1.getMessage(), e1);
 		}
 	}
 
-	protected void handleError(HttpExchange exchange, int httpCode, Exception e) {
+	protected final void handleError(HttpExchange exchange, int httpCode, Exception e) {
 		handleError(exchange, httpCode, e.getMessage(), e);
 	}
-	
+
 	protected abstract void handleRequest(HttpExchange exchange, URI uri, String requestMethod) throws IOException;
 }
